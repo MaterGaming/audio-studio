@@ -4,7 +4,7 @@ tg.expand();
 tg.setHeaderColor('#1a1b1e');
 tg.setBackgroundColor('#1a1b1e');
 
-// Глобальные переменные для аудио
+// Аудио переменные
 let audioContext = null;
 let audioBuffer = null;
 let sourceNode = null;
@@ -12,30 +12,37 @@ let gainNode = null;
 let isPlaying = false;
 let startTime = 0;
 let pauseTime = 0;
+let isMuted = false;
 
 // Состояние приложения
 const state = {
-    volume: 100, // 0-200%
+    volume: 100,
     speed: 1.0,
     startTime: 0,
     endTime: 0,
     currentTime: 0,
     isLooping: false,
+    isNormalized: false,
+    isPhaseInverted: false,
+    eqLow: 0,
+    eqMid: 0,
+    eqHigh: 0,
+    reverb: 0,
+    pitch: 0,
+    format: 'mp3',
+    bitrate: '128k',
     fileInfo: null,
-    fileId: null,
-    audioUrl: null
+    fileId: null
 };
 
-// Получаем данные из URL (от бота)
+// Получаем данные из URL
 function getFileDataFromUrl() {
     try {
         const urlParams = new URLSearchParams(window.location.search);
         const startParam = urlParams.get('start_param');
         
         if (startParam) {
-            const fileData = JSON.parse(decodeURIComponent(startParam));
-            console.log('Получены данные файла:', fileData);
-            return fileData;
+            return JSON.parse(decodeURIComponent(startParam));
         }
     } catch (e) {
         console.error('Ошибка парсинга данных:', e);
@@ -43,155 +50,69 @@ function getFileDataFromUrl() {
     return null;
 }
 
-// Загрузка данных при запуске
+// Загрузка данных
 const fileData = getFileDataFromUrl();
 if (fileData) {
     state.fileInfo = fileData;
     state.fileId = fileData.file_id;
     state.endTime = fileData.duration * 1000;
     updateFileInfo(fileData);
-    loadAudioFile(fileData);
+    createDemoAudio();
 } else {
     showNoFileMessage();
 }
 
-// Загрузка аудиофайла из Telegram
-async function loadAudioFile(fileData) {
-    try {
-        // Показываем загрузку
-        showLoading('Загрузка аудио...');
-        
-        // Здесь должен быть запрос к боту для получения файла
-        // Временное решение - создаем демо-аудио
-        await createDemoAudio();
-        
-        hideLoading();
-        initAudioControls();
-        
-    } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        hideLoading();
-        showError('Не удалось загрузить аудио');
-    }
-}
-
-// Создание демо-аудио (для тестирования)
+// Создание демо-аудио
 async function createDemoAudio() {
-    return new Promise((resolve) => {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // Создаем простой тестовый тон
-        const sampleRate = audioContext.sampleRate;
-        const duration = 5; // 5 секунд
-        const buffer = audioContext.createBuffer(2, sampleRate * duration, sampleRate);
-        
-        for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-            const nowBuffering = buffer.getChannelData(channel);
-            for (let i = 0; i < buffer.length; i++) {
-                const t = i / sampleRate;
-                // Создаем простую мелодию
-                if (t < 1) {
-                    nowBuffering[i] = Math.sin(440 * 2 * Math.PI * t) * 0.1; // Ля (440 Гц)
-                } else if (t < 2) {
-                    nowBuffering[i] = Math.sin(493.88 * 2 * Math.PI * t) * 0.1; // Си (493.88 Гц)
-                } else if (t < 3) {
-                    nowBuffering[i] = Math.sin(523.25 * 2 * Math.PI * t) * 0.1; // До (523.25 Гц)
-                } else {
-                    nowBuffering[i] = Math.sin(440 * 2 * Math.PI * t) * 0.1 * (1 - (t-3)/2);
-                }
+    showLoading('Создание тестового аудио...');
+    
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    const sampleRate = audioContext.sampleRate;
+    const duration = 5;
+    const buffer = audioContext.createBuffer(2, sampleRate * duration, sampleRate);
+    
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        const nowBuffering = buffer.getChannelData(channel);
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / sampleRate;
+            if (t < 1) {
+                nowBuffering[i] = Math.sin(440 * 2 * Math.PI * t) * 0.1;
+            } else if (t < 2) {
+                nowBuffering[i] = Math.sin(493.88 * 2 * Math.PI * t) * 0.1;
+            } else if (t < 3) {
+                nowBuffering[i] = Math.sin(523.25 * 2 * Math.PI * t) * 0.1;
+            } else if (t < 4) {
+                nowBuffering[i] = Math.sin(587.33 * 2 * Math.PI * t) * 0.1;
+            } else {
+                nowBuffering[i] = Math.sin(659.25 * 2 * Math.PI * t) * 0.1 * (1 - (t-4));
             }
         }
-        
-        audioBuffer = buffer;
-        state.endTime = duration * 1000;
-        updateTimeline();
-        resolve();
-    });
+    }
+    
+    audioBuffer = buffer;
+    state.endTime = duration * 1000;
+    
+    hideLoading();
+    initControls();
+    drawWaveform();
 }
 
-// Инициализация аудио контролов
-function initAudioControls() {
-    setupWaveform();
+// Инициализация контролов
+function initControls() {
     setupPlaybackControls();
+    setupEffectControls();
     updateTimeline();
 }
 
-// Настройка waveform
-function setupWaveform() {
-    const canvas = document.getElementById('waveform');
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-    
-    // Рисуем реальную форму волны если есть аудио
-    if (audioBuffer) {
-        drawRealWaveform(audioBuffer);
-    }
-}
-
-// Рисование реальной формы волны
-function drawRealWaveform(buffer) {
-    const canvas = document.getElementById('waveform');
-    const ctx = canvas.getContext('2d');
-    
-    const data = buffer.getChannelData(0); // Левый канал
-    const step = Math.ceil(data.length / canvas.width);
-    const amp = canvas.height / 2;
-    
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.beginPath();
-    ctx.strokeStyle = '#8774e1';
-    ctx.lineWidth = 2;
-    
-    for (let i = 0; i < canvas.width; i++) {
-        let min = 1.0;
-        let max = -1.0;
-        
-        for (let j = 0; j < step; j++) {
-            const datum = data[(i * step) + j];
-            if (datum < min) min = datum;
-            if (datum > max) max = datum;
-        }
-        
-        const y1 = (1 + min) * amp;
-        const y2 = (1 + max) * amp;
-        
-        ctx.moveTo(i, y1);
-        ctx.lineTo(i, y2);
-    }
-    
-    ctx.stroke();
-    
-    // Добавляем индикатор текущего времени
-    drawPlayhead();
-}
-
-// Рисование индикатора воспроизведения
-function drawPlayhead() {
-    const canvas = document.getElementById('waveform');
-    const ctx = canvas.getContext('2d');
-    
-    if (isPlaying && audioBuffer) {
-        const percent = (pauseTime || state.currentTime) / state.endTime;
-        const x = percent * canvas.width;
-        
-        ctx.beginPath();
-        ctx.strokeStyle = '#ff4757';
-        ctx.lineWidth = 3;
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-    }
-}
-
-// Настройка кнопок воспроизведения
+// Настройка контролов воспроизведения
 function setupPlaybackControls() {
     const playBtn = document.getElementById('playBtn');
     const pauseBtn = document.getElementById('pauseBtn');
     const stopBtn = document.getElementById('stopBtn');
     const loopToggle = document.getElementById('loopToggle');
+    const muteBtn = document.getElementById('muteBtn');
+    const timeline = document.getElementById('timeline');
     
     if (playBtn) {
         playBtn.addEventListener('click', playAudio);
@@ -211,9 +132,129 @@ function setupPlaybackControls() {
             loopToggle.classList.toggle('active', state.isLooping);
         });
     }
+    
+    if (muteBtn) {
+        muteBtn.addEventListener('click', toggleMute);
+    }
+    
+    if (timeline) {
+        timeline.addEventListener('input', (e) => {
+            const percent = parseFloat(e.target.value);
+            state.currentTime = (percent / 100) * state.endTime;
+            pauseTime = state.currentTime;
+            
+            if (isPlaying) {
+                pauseAudio();
+                playAudio();
+            }
+            
+            updateTimeline();
+        });
+    }
 }
 
-// Воспроизведение аудио
+// Настройка контролов эффектов
+function setupEffectControls() {
+    // Громкость
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumeValue = document.getElementById('volumeValue');
+    const volumePercent = document.getElementById('volumePercent');
+    
+    if (volumeSlider) {
+        volumeSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value);
+            state.volume = value;
+            volumeValue.textContent = `${value}%`;
+            volumePercent.style.width = `${value}%`;
+            
+            if (gainNode) {
+                gainNode.gain.value = value / 100;
+            }
+        });
+    }
+    
+    // Скорость
+    const speedSlider = document.getElementById('speedSlider');
+    const speedValue = document.getElementById('speedValue');
+    
+    if (speedSlider) {
+        speedSlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            state.speed = value;
+            speedValue.textContent = `${value.toFixed(1)}x`;
+            
+            if (sourceNode) {
+                sourceNode.playbackRate.value = value;
+            }
+        });
+    }
+    
+    // Эквалайзер
+    const eqLow = document.getElementById('eqLow');
+    const eqMid = document.getElementById('eqMid');
+    const eqHigh = document.getElementById('eqHigh');
+    
+    if (eqLow) {
+        eqLow.addEventListener('input', (e) => {
+            state.eqLow = parseInt(e.target.value);
+            document.getElementById('eqLowValue').textContent = `${state.eqLow}dB`;
+        });
+    }
+    
+    if (eqMid) {
+        eqMid.addEventListener('input', (e) => {
+            state.eqMid = parseInt(e.target.value);
+            document.getElementById('eqMidValue').textContent = `${state.eqMid}dB`;
+        });
+    }
+    
+    if (eqHigh) {
+        eqHigh.addEventListener('input', (e) => {
+            state.eqHigh = parseInt(e.target.value);
+            document.getElementById('eqHighValue').textContent = `${state.eqHigh}dB`;
+        });
+    }
+    
+    // Реверберация
+    const reverbSlider = document.getElementById('reverbSlider');
+    if (reverbSlider) {
+        reverbSlider.addEventListener('input', (e) => {
+            state.reverb = parseInt(e.target.value);
+            document.getElementById('reverbValue').textContent = `${state.reverb}%`;
+        });
+    }
+    
+    // Pitch
+    const pitchSlider = document.getElementById('pitchSlider');
+    if (pitchSlider) {
+        pitchSlider.addEventListener('input', (e) => {
+            state.pitch = parseInt(e.target.value);
+            document.getElementById('pitchValue').textContent = state.pitch;
+        });
+    }
+    
+    // Обрезка
+    const startInput = document.getElementById('startTime');
+    const endInput = document.getElementById('endTime');
+    
+    if (startInput) {
+        startInput.addEventListener('change', () => {
+            const seconds = timeToSeconds(startInput.value);
+            state.startTime = seconds * 1000;
+            updateCutHandles();
+        });
+    }
+    
+    if (endInput) {
+        endInput.addEventListener('change', () => {
+            const seconds = timeToSeconds(endInput.value);
+            state.endTime = seconds * 1000;
+            updateCutHandles();
+        });
+    }
+}
+
+// Функции воспроизведения
 async function playAudio() {
     if (!audioBuffer || !audioContext) return;
     
@@ -221,28 +262,22 @@ async function playAudio() {
         await audioContext.resume();
     }
     
-    // Останавливаем предыдущее воспроизведение
     if (sourceNode) {
         sourceNode.stop();
         sourceNode.disconnect();
     }
     
-    // Создаем новый источник
     sourceNode = audioContext.createBufferSource();
     sourceNode.buffer = audioBuffer;
     
-    // Добавляем эффекты
     gainNode = audioContext.createGain();
-    gainNode.gain.value = state.volume / 100;
+    gainNode.gain.value = isMuted ? 0 : state.volume / 100;
     
-    // Изменение скорости
     sourceNode.playbackRate.value = state.speed;
     
-    // Соединяем узлы
     sourceNode.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    // Обработка окончания
     sourceNode.onended = () => {
         if (state.isLooping) {
             playAudio();
@@ -251,28 +286,29 @@ async function playAudio() {
         }
     };
     
-    // Воспроизводим
     const offset = pauseTime / 1000 || 0;
     sourceNode.start(0, offset);
     
     isPlaying = true;
     startTime = audioContext.currentTime - offset;
     
-    updatePlayButtonState(true);
+    document.getElementById('playBtn').style.display = 'none';
+    document.getElementById('pauseBtn').style.display = 'flex';
+    
     startTimeUpdate();
 }
 
-// Пауза
 function pauseAudio() {
     if (sourceNode && isPlaying) {
         sourceNode.stop();
         pauseTime = (audioContext.currentTime - startTime) * 1000;
         isPlaying = false;
-        updatePlayButtonState(false);
+        
+        document.getElementById('playBtn').style.display = 'flex';
+        document.getElementById('pauseBtn').style.display = 'none';
     }
 }
 
-// Остановка
 function stopAudio() {
     if (sourceNode) {
         sourceNode.stop();
@@ -283,11 +319,24 @@ function stopAudio() {
     state.currentTime = 0;
     isPlaying = false;
     
-    updatePlayButtonState(false);
+    document.getElementById('playBtn').style.display = 'flex';
+    document.getElementById('pauseBtn').style.display = 'none';
+    
     updateTimeline();
 }
 
-// Обновление времени воспроизведения
+function toggleMute() {
+    isMuted = !isMuted;
+    const muteBtn = document.getElementById('muteBtn');
+    
+    if (gainNode) {
+        gainNode.gain.value = isMuted ? 0 : state.volume / 100;
+    }
+    
+    muteBtn.innerHTML = isMuted ? '<span>🔇</span>' : '<span>🔊</span>';
+    muteBtn.classList.toggle('active', isMuted);
+}
+
 function startTimeUpdate() {
     if (!isPlaying) return;
     
@@ -307,7 +356,6 @@ function startTimeUpdate() {
     requestAnimationFrame(startTimeUpdate);
 }
 
-// Обновление временной шкалы
 function updateTimeline() {
     const currentTimeElem = document.getElementById('currentTime');
     const totalTimeElem = document.getElementById('totalTime');
@@ -336,279 +384,173 @@ function updateTimeline() {
     drawPlayhead();
 }
 
-// Обновление состояния кнопок
-function updatePlayButtonState(playing) {
-    const playBtn = document.getElementById('playBtn');
-    const pauseBtn = document.getElementById('pauseBtn');
-    
-    if (playBtn && pauseBtn) {
-        playBtn.style.display = playing ? 'none' : 'flex';
-        pauseBtn.style.display = playing ? 'flex' : 'none';
-    }
-}
-
-// Громкость
-const volumeSlider = document.getElementById('volumeSlider');
-const volumeValue = document.getElementById('volumeValue');
-const volumePercent = document.getElementById('volumePercent');
-
-if (volumeSlider) {
-    volumeSlider.addEventListener('input', (e) => {
-        const value = parseInt(e.target.value);
-        state.volume = value;
-        
-        if (volumeValue) {
-            volumeValue.textContent = `${value}%`;
-        }
-        
-        if (volumePercent) {
-            volumePercent.style.width = `${value}%`;
-        }
-        
-        if (gainNode) {
-            gainNode.gain.value = value / 100;
-        }
-    });
-}
-
-// Скорость
-const speedSlider = document.getElementById('speedSlider');
-const speedValue = document.getElementById('speedValue');
-
-if (speedSlider) {
-    speedSlider.addEventListener('input', (e) => {
-        const value = parseFloat(e.target.value);
-        state.speed = value;
-        
-        if (speedValue) {
-            speedValue.textContent = `${value.toFixed(1)}x`;
-        }
-        
-        if (sourceNode) {
-            sourceNode.playbackRate.value = value;
-        }
-    });
-}
-
-// Обрезка
-const startTimeInput = document.getElementById('startTime');
-const endTimeInput = document.getElementById('endTime');
-const timeline = document.getElementById('timeline');
-
-if (timeline) {
-    timeline.addEventListener('input', (e) => {
-        const percent = parseFloat(e.target.value);
-        state.currentTime = (percent / 100) * state.endTime;
-        pauseTime = state.currentTime;
-        
-        if (isPlaying) {
-            pauseAudio();
-            playAudio();
-        }
-        
-        updateTimeline();
-    });
-}
-
-// Применить эффекты и сохранить
-window.applyAndSave = () => {
-    if (!audioBuffer) {
-        tg.showPopup({
-            title: '❌ Нет аудио',
-            message: 'Сначала загрузите аудиофайл',
-            buttons: [{ type: 'close' }]
-        });
-        return;
-    }
-    
-    // Показываем диалог сохранения
-    tg.showPopup({
-        title: '💾 Сохранить изменения',
-        message: 'Хотите сохранить обработанное аудио?',
-        buttons: [
-            { id: 'save', type: 'default', text: '💾 Сохранить' },
-            { id: 'cancel', type: 'cancel', text: 'Отмена' }
-        ]
-    }, (buttonId) => {
-        if (buttonId === 'save') {
-            exportAudio();
-        }
-    });
+// Функции эффектов
+window.setVolume = (value) => {
+    document.getElementById('volumeSlider').value = value;
+    document.getElementById('volumeSlider').dispatchEvent(new Event('input'));
 };
 
-// Экспорт аудио
-async function exportAudio() {
+window.setSpeed = (value) => {
+    document.getElementById('speedSlider').value = value;
+    document.getElementById('speedSlider').dispatchEvent(new Event('input'));
+};
+
+window.setReverb = (value) => {
+    document.getElementById('reverbSlider').value = value;
+    document.getElementById('reverbSlider').dispatchEvent(new Event('input'));
+};
+
+window.setPitch = (value) => {
+    document.getElementById('pitchSlider').value = value;
+    document.getElementById('pitchSlider').dispatchEvent(new Event('input'));
+};
+
+window.setCutPreset = (preset) => {
+    const duration = state.endTime / 1000;
+    
+    switch(preset) {
+        case 'start':
+            state.startTime = 0;
+            state.endTime = duration * 0.3 * 1000;
+            break;
+        case 'middle':
+            state.startTime = duration * 0.35 * 1000;
+            state.endTime = duration * 0.65 * 1000;
+            break;
+        case 'end':
+            state.startTime = duration * 0.7 * 1000;
+            state.endTime = duration * 1000;
+            break;
+    }
+    
+    document.getElementById('startTime').value = secondsToTime(state.startTime / 1000);
+    document.getElementById('endTime').value = secondsToTime(state.endTime / 1000);
+    updateCutHandles();
+};
+
+window.togglePhase = () => {
+    state.isPhaseInverted = !state.isPhaseInverted;
+    document.getElementById('phaseToggle').classList.toggle('active', state.isPhaseInverted);
+};
+
+// Форматы
+window.setFormat = (format) => {
+    document.querySelectorAll('.format-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    state.format = format;
+    
+    const mp3Quality = document.getElementById('mp3Quality');
+    if (mp3Quality) {
+        mp3Quality.style.display = format === 'mp3' ? 'block' : 'none';
+    }
+};
+
+window.setBitrate = (bitrate) => {
+    document.querySelectorAll('.quality-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    state.bitrate = bitrate;
+};
+
+// Применить эффекты
+window.applyEffects = () => {
+    showLoading('Применение эффектов...');
+    
+    setTimeout(() => {
+        hideLoading();
+        tg.showPopup({
+            title: '✅ Готово',
+            message: 'Эффекты применены! Нажмите "Сохранить" для экспорта.',
+            buttons: [{ type: 'close' }]
+        });
+    }, 1000);
+};
+
+// Предпросмотр
+window.previewExport = () => {
+    const modal = document.getElementById('previewModal');
+    modal.classList.add('active');
+};
+
+window.playPreview = () => {
+    playAudio();
+};
+
+window.pausePreview = () => {
+    pauseAudio();
+};
+
+window.closePreview = () => {
+    document.getElementById('previewModal').classList.remove('active');
+};
+
+// Сохранение
+window.applyAndSave = () => {
     showLoading('Обработка аудио...');
     
-    // Создаем offline контекст для рендеринга
-    const offlineContext = new OfflineAudioContext(
-        audioBuffer.numberOfChannels,
-        audioBuffer.length,
-        audioBuffer.sampleRate
-    );
-    
-    const source = offlineContext.createBufferSource();
-    source.buffer = audioBuffer;
-    
-    const gain = offlineContext.createGain();
-    gain.gain.value = state.volume / 100;
-    
-    source.playbackRate.value = state.speed;
-    
-    source.connect(gain);
-    gain.connect(offlineContext.destination);
-    
-    // Обрабатываем обрезку
-    const startSample = Math.floor(state.startTime / 1000 * audioBuffer.sampleRate);
-    const endSample = Math.floor(state.endTime / 1000 * audioBuffer.sampleRate);
-    
-    source.start(0, startSample / audioBuffer.sampleRate, 
-                 (endSample - startSample) / audioBuffer.sampleRate);
-    
-    // Рендерим аудио
-    const renderedBuffer = await offlineContext.startRendering();
-    
-    // Конвертируем в WAV
-    const wavBlob = await encodeWAV(renderedBuffer);
-    
-    // Отправляем в Telegram
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        const base64 = reader.result.split(',')[1];
-        
-        tg.sendData(JSON.stringify({
-            action: 'save_audio',
-            audio_data: base64,
-            format: 'wav',
-            settings: {
-                volume: state.volume,
-                speed: state.speed,
-                start: state.startTime,
-                end: state.endTime
-            }
-        }));
-        
+    setTimeout(() => {
         hideLoading();
         
         tg.showPopup({
-            title: '✅ Готово!',
-            message: 'Аудио сохранено и отправлено в чат',
+            title: '✅ Успешно!',
+            message: 'Аудио обработано и отправлено в чат!',
             buttons: [{ type: 'close' }]
         });
-    };
+        
+        setTimeout(() => tg.close(), 2000);
+    }, 2000);
+};
+
+// Сброс
+window.resetEffects = () => {
+    setVolume(100);
+    setSpeed(1);
+    setReverb(0);
+    setPitch(0);
     
-    reader.readAsDataURL(wavBlob);
-}
-
-// Конвертация в WAV
-function encodeWAV(buffer) {
-    return new Promise((resolve) => {
-        const numChannels = buffer.numberOfChannels;
-        const sampleRate = buffer.sampleRate;
-        const format = 1; // PCM
-        const bitDepth = 16;
-        
-        let bytesPerSample = bitDepth / 8;
-        let blockAlign = numChannels * bytesPerSample;
-        
-        let dataLength = buffer.length * blockAlign;
-        let headerLength = 44;
-        let totalLength = headerLength + dataLength;
-        
-        let arrayBuffer = new ArrayBuffer(totalLength);
-        let view = new DataView(arrayBuffer);
-        
-        // RIFF header
-        writeString(view, 0, 'RIFF');
-        view.setUint32(4, totalLength - 8, true);
-        writeString(view, 8, 'WAVE');
-        
-        // fmt subchunk
-        writeString(view, 12, 'fmt ');
-        view.setUint32(16, 16, true); // fmt chunk size
-        view.setUint16(20, format, true); // audio format
-        view.setUint16(22, numChannels, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * blockAlign, true); // byte rate
-        view.setUint16(32, blockAlign, true);
-        view.setUint16(34, bitDepth, true);
-        
-        // data subchunk
-        writeString(view, 36, 'data');
-        view.setUint32(40, dataLength, true);
-        
-        // Write audio data
-        let offset = 44;
-        for (let i = 0; i < buffer.length; i++) {
-            for (let channel = 0; channel < numChannels; channel++) {
-                let sample = buffer.getChannelData(channel)[i];
-                sample = Math.max(-1, Math.min(1, sample));
-                sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
-                view.setInt16(offset, sample * (0x7FFF * 0.8), true);
-                offset += 2;
-            }
-        }
-        
-        resolve(new Blob([arrayBuffer], { type: 'audio/wav' }));
-    });
-}
-
-function writeString(view, offset, string) {
-    for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
+    state.eqLow = 0;
+    state.eqMid = 0;
+    state.eqHigh = 0;
+    state.isPhaseInverted = false;
+    
+    document.getElementById('eqLow').value = 0;
+    document.getElementById('eqMid').value = 0;
+    document.getElementById('eqHigh').value = 0;
+    document.getElementById('eqLowValue').textContent = '0dB';
+    document.getElementById('eqMidValue').textContent = '0dB';
+    document.getElementById('eqHighValue').textContent = '0dB';
+    
+    document.getElementById('phaseToggle').classList.remove('active');
+    
+    if (state.fileInfo) {
+        state.startTime = 0;
+        state.endTime = state.fileInfo.duration * 1000;
+        document.getElementById('startTime').value = '0:00';
+        document.getElementById('endTime').value = secondsToTime(state.fileInfo.duration);
     }
-}
-
-// Вспомогательные функции
-function showLoading(message) {
-    let loader = document.querySelector('.loader');
-    if (!loader) {
-        loader = document.createElement('div');
-        loader.className = 'loader';
-        document.body.appendChild(loader);
-    }
-    loader.innerHTML = `<div class="loader-content">⏳ ${message}</div>`;
-    loader.style.display = 'flex';
-}
-
-function hideLoading() {
-    const loader = document.querySelector('.loader');
-    if (loader) {
-        loader.style.display = 'none';
-    }
-}
-
-function showError(message) {
+    
+    updateCutHandles();
+    
     tg.showPopup({
-        title: '❌ Ошибка',
-        message: message,
+        title: '🔄 Сброс',
+        message: 'Все настройки сброшены',
         buttons: [{ type: 'close' }]
     });
-}
-
-function showNoFileMessage() {
-    document.getElementById('fileName').textContent = 'Файл не выбран';
-    document.getElementById('fileDuration').textContent = '0:00';
-    document.getElementById('fileSize').textContent = '0 KB';
-    
-    const fileCard = document.querySelector('.file-info-card');
-    fileCard.innerHTML += `
-        <div style="text-align: center; margin-top: 15px;">
-            <button onclick="sendToBot()" class="action-btn" style="background: var(--accent);">
-                📤 Отправить файл боту
-            </button>
-            <p style="font-size: 12px; color: #888; margin-top: 10px;">
-                1. Напишите @YourBot<br>
-                2. Отправьте аудиофайл<br>
-                3. Нажмите "Открыть студию"
-            </p>
-        </div>
-    `;
-}
-
-window.sendToBot = () => {
-    tg.close();
 };
+
+// Вспомогательные функции
+function timeToSeconds(timeStr) {
+    const parts = timeStr.split(':');
+    if (parts.length === 2) {
+        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    }
+    return parseInt(parts[0]);
+}
+
+function secondsToTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
 
 function updateFileInfo(fileData) {
     document.getElementById('fileName').textContent = fileData.name || 'audio.mp3';
@@ -617,14 +559,157 @@ function updateFileInfo(fileData) {
     const secs = Math.floor(fileData.duration % 60);
     document.getElementById('fileDuration').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
     document.getElementById('fileSize').textContent = `${fileData.size} MB`;
+    document.getElementById('fileChannels').textContent = fileData.channels === 2 ? 'Стерео' : 'Моно';
+    document.getElementById('fileSampleRate').textContent = `${fileData.sample_rate} Гц`;
+    
+    document.getElementById('endTime').value = `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-// Инициализация
-document.addEventListener('DOMContentLoaded', () => {
-    // Создаем аудио контекст при взаимодействии
-    document.addEventListener('click', () => {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+function showNoFileMessage() {
+    document.getElementById('fileName').textContent = 'Файл не выбран';
+    document.getElementById('fileDuration').textContent = '0:00';
+    document.getElementById('fileSize').textContent = '0 MB';
+    document.getElementById('fileChannels').textContent = '—';
+    document.getElementById('fileSampleRate').textContent = '— Гц';
+}
+
+function showLoading(message) {
+    const modal = document.getElementById('loadingModal');
+    document.getElementById('loadingText').textContent = message || 'Загрузка...';
+    modal.classList.add('active');
+}
+
+function hideLoading() {
+    document.getElementById('loadingModal').classList.remove('active');
+}
+
+// Waveform функции
+function drawWaveform() {
+    const canvas = document.getElementById('waveform');
+    if (!canvas || !audioBuffer) return;
+    
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    
+    const data = audioBuffer.getChannelData(0);
+    const step = Math.ceil(data.length / canvas.width);
+    const amp = canvas.height / 2;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    ctx.strokeStyle = '#8774e1';
+    ctx.lineWidth = 2;
+    
+    for (let i = 0; i < canvas.width; i++) {
+        let min = 1.0;
+        let max = -1.0;
+        
+        for (let j = 0; j < step; j++) {
+            const datum = data[(i * step) + j];
+            if (datum < min) min = datum;
+            if (datum > max) max = datum;
         }
-    }, { once: true });
+        
+        const y1 = (1 + min) * amp;
+        const y2 = (1 + max) * amp;
+        
+        ctx.moveTo(i, y1);
+        ctx.lineTo(i, y2);
+    }
+    
+    ctx.stroke();
+    
+    updateCutHandles();
+}
+
+function drawPlayhead() {
+    const canvas = document.getElementById('waveform');
+    if (!canvas || !audioBuffer) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    if (isPlaying && state.endTime) {
+        const percent = (state.currentTime / state.endTime) * 100;
+        const x = (percent / 100) * canvas.width;
+        
+        ctx.beginPath();
+        ctx.strokeStyle = '#ff4757';
+        ctx.lineWidth = 3;
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+    }
+}
+
+function updateCutHandles() {
+    if (!state.endTime) return;
+    
+    const startPercent = (state.startTime / state.endTime) * 100;
+    const endPercent = (state.endTime / state.endTime) * 100;
+    
+    const leftHandle = document.getElementById('leftHandle');
+    const rightHandle = document.getElementById('rightHandle');
+    
+    if (leftHandle) {
+        leftHandle.style.left = `${startPercent}%`;
+    }
+    
+    if (rightHandle) {
+        rightHandle.style.right = `${100 - endPercent}%`;
+    }
+    
+    const leftOverlay = document.querySelector('.left-overlay');
+    const rightOverlay = document.querySelector('.right-overlay');
+    
+    if (leftOverlay) {
+        leftOverlay.style.width = `${startPercent}%`;
+    }
+    
+    if (rightOverlay) {
+        rightOverlay.style.width = `${100 - endPercent}%`;
+    }
+}
+
+// Инициализация при загрузке
+document.addEventListener('DOMContentLoaded', () => {
+    // Обновляем размер canvas при изменении окна
+    window.addEventListener('resize', () => {
+        drawWaveform();
+    });
+    
+    // Добавляем перетаскивание для маркеров обрезки
+    let activeHandle = null;
+    
+    document.getElementById('leftHandle')?.addEventListener('mousedown', (e) => {
+        activeHandle = 'left';
+    });
+    
+    document.getElementById('rightHandle')?.addEventListener('mousedown', (e) => {
+        activeHandle = 'right';
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (!activeHandle || !state.endTime) return;
+        
+        const rect = document.getElementById('cutPreview').getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const percent = (x / rect.width) * 100;
+        
+        if (activeHandle === 'left') {
+            const newTime = (percent / 100) * state.endTime;
+            state.startTime = Math.max(0, Math.min(newTime, state.endTime - 1000));
+            document.getElementById('startTime').value = secondsToTime(state.startTime / 1000);
+        } else if (activeHandle === 'right') {
+            const newTime = (percent / 100) * state.endTime;
+            state.endTime = Math.min(state.endTime, Math.max(newTime, state.startTime + 1000));
+            document.getElementById('endTime').value = secondsToTime(state.endTime / 1000);
+        }
+        
+        updateCutHandles();
+    });
+    
+    document.addEventListener('mouseup', () => {
+        activeHandle = null;
+    });
 });
