@@ -11,7 +11,7 @@
         <!-- Шапка -->
         <header class="header">
             <h1>🎵 Audio Studio</h1>
-            <button class="close-btn" onclick="telegram.close()">✕</button>
+            <button class="close-btn" onclick="window.Telegram.WebApp.close()">✕</button>
         </header>
 
         <!-- Основной контент -->
@@ -21,11 +21,44 @@
                 <div class="file-icon">🎧</div>
                 <div class="file-details">
                     <h3>Текущий файл</h3>
-                    <p id="fileName">Не выбран</p>
+                    <p id="fileName">Загрузка...</p>
                     <div class="file-meta">
                         <span id="fileDuration">0:00</span>
-                        <span id="fileSize">0 KB</span>
+                        <span id="fileSize">0 MB</span>
+                        <span id="fileChannels">Стерео</span>
+                        <span id="fileSampleRate">44100 Гц</span>
                     </div>
+                </div>
+            </div>
+
+            <!-- Аудиоплеер с реальным временем -->
+            <div class="player-card glass-effect">
+                <div class="waveform-container">
+                    <canvas id="waveform" width="600" height="100"></canvas>
+                    <input type="range" id="timeline" class="timeline" min="0" max="100" value="0" step="0.1">
+                </div>
+                
+                <div class="time-display">
+                    <span id="currentTime">0:00</span>
+                    <span id="totalTime">0:00</span>
+                </div>
+                
+                <div class="player-controls">
+                    <button id="playBtn" class="control-btn play">
+                        <span>▶</span>
+                    </button>
+                    <button id="pauseBtn" class="control-btn pause" style="display: none;">
+                        <span>⏸</span>
+                    </button>
+                    <button id="stopBtn" class="control-btn stop">
+                        <span>⏹</span>
+                    </button>
+                    <button id="loopToggle" class="control-btn loop">
+                        <span>🔄</span>
+                    </button>
+                    <button id="muteBtn" class="control-btn mute">
+                        <span>🔊</span>
+                    </button>
                 </div>
             </div>
 
@@ -38,29 +71,33 @@
 
             <!-- Вкладка "Основные" -->
             <div class="tab-content active" id="basic-tab">
-                <!-- Громкость -->
+                <!-- Громкость с визуализацией -->
                 <div class="effect-card glass-effect">
                     <div class="effect-header">
                         <span class="effect-icon">🔊</span>
                         <h3>Громкость</h3>
                     </div>
                     <div class="effect-control">
-                        <input type="range" id="volumeSlider" min="-20" max="20" value="0" step="1">
+                        <div class="volume-container">
+                            <input type="range" id="volumeSlider" min="0" max="200" value="100" step="1">
+                            <div class="volume-percent" id="volumePercent" style="width: 50%;"></div>
+                        </div>
                         <div class="value-display">
-                            <span id="volumeValue">0 dB</span>
+                            <span id="volumeValue">100%</span>
                             <div class="preset-buttons">
-                                <button class="preset-btn" onclick="setVolume(-5)">-5dB</button>
-                                <button class="preset-btn" onclick="setVolume(0)">0dB</button>
-                                <button class="preset-btn" onclick="setVolume(5)">+5dB</button>
+                                <button class="preset-btn" onclick="setVolume(50)">50%</button>
+                                <button class="preset-btn" onclick="setVolume(100)">100%</button>
+                                <button class="preset-btn" onclick="setVolume(150)">150%</button>
+                                <button class="preset-btn" onclick="setVolume(200)">200%</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Скорость -->
+                <!-- Скорость с пресетами -->
                 <div class="effect-card glass-effect">
                     <div class="effect-header">
-                        <span class="effect-icon">▶️</span>
+                        <span class="effect-icon">⚡</span>
                         <h3>Скорость</h3>
                     </div>
                     <div class="effect-control">
@@ -68,8 +105,10 @@
                         <div class="value-display">
                             <span id="speedValue">1.0x</span>
                             <div class="preset-buttons">
+                                <button class="preset-btn" onclick="setSpeed(0.5)">0.5x</button>
                                 <button class="preset-btn" onclick="setSpeed(0.75)">0.75x</button>
                                 <button class="preset-btn" onclick="setSpeed(1)">1.0x</button>
+                                <button class="preset-btn" onclick="setSpeed(1.25)">1.25x</button>
                                 <button class="preset-btn" onclick="setSpeed(1.5)">1.5x</button>
                                 <button class="preset-btn" onclick="setSpeed(2)">2.0x</button>
                             </div>
@@ -77,7 +116,7 @@
                     </div>
                 </div>
 
-                <!-- Обрезка -->
+                <!-- Обрезка с визуальными маркерами -->
                 <div class="effect-card glass-effect">
                     <div class="effect-header">
                         <span class="effect-icon">✂️</span>
@@ -94,12 +133,16 @@
                                 <input type="text" id="endTime" placeholder="3:30" value="3:30">
                             </div>
                         </div>
-                        <div class="waveform-container">
-                            <canvas id="waveform" width="300" height="60"></canvas>
-                            <div class="waveform-handles">
-                                <div class="handle left" id="leftHandle"></div>
-                                <div class="handle right" id="rightHandle"></div>
-                            </div>
+                        <div class="cut-preview" id="cutPreview">
+                            <div class="cut-handle left" id="leftHandle"></div>
+                            <div class="cut-handle right" id="rightHandle"></div>
+                            <div class="cut-overlay left-overlay"></div>
+                            <div class="cut-overlay right-overlay"></div>
+                        </div>
+                        <div class="preset-buttons" style="margin-top: 10px;">
+                            <button class="preset-btn" onclick="setCutPreset('start')">Начало</button>
+                            <button class="preset-btn" onclick="setCutPreset('middle')">Середина</button>
+                            <button class="preset-btn" onclick="setCutPreset('end')">Конец</button>
                         </div>
                     </div>
                 </div>
@@ -107,53 +150,88 @@
 
             <!-- Вкладка "Расширенные" -->
             <div class="tab-content" id="advanced-tab">
-                <!-- Частота дискретизации -->
-                <div class="effect-card glass-effect">
-                    <div class="effect-header">
-                        <span class="effect-icon">🎚️</span>
-                        <h3>Частота дискретизации</h3>
-                    </div>
-                    <select class="modern-select" id="sampleRate">
-                        <option value="original">Оригинал (44100 Гц)</option>
-                        <option value="22050">22050 Гц</option>
-                        <option value="44100">44100 Гц</option>
-                        <option value="48000">48000 Гц</option>
-                        <option value="96000">96000 Гц</option>
-                    </select>
-                </div>
-
-                <!-- Каналы -->
-                <div class="effect-card glass-effect">
-                    <div class="effect-header">
-                        <span class="effect-icon">🔊</span>
-                        <h3>Каналы</h3>
-                    </div>
-                    <div class="channel-selector">
-                        <button class="channel-btn active" onclick="setChannels('original')">Оригинал</button>
-                        <button class="channel-btn" onclick="setChannels('mono')">Моно</button>
-                        <button class="channel-btn" onclick="setChannels('stereo')">Стерео</button>
-                    </div>
-                </div>
-
-                <!-- Битность -->
+                <!-- Эквалайзер -->
                 <div class="effect-card glass-effect">
                     <div class="effect-header">
                         <span class="effect-icon">📊</span>
-                        <h3>Битность</h3>
+                        <h3>Эквалайзер</h3>
+                        <span class="tooltip">ⓘ
+                            <span class="tooltip-text">Простой эквалайзер для настройки частот</span>
+                        </span>
                     </div>
-                    <div class="bit-depth-selector">
-                        <button class="depth-btn active" onclick="setBitDepth('original')">Оригинал</button>
-                        <button class="depth-btn" onclick="setBitDepth(8)">8 бит</button>
-                        <button class="depth-btn" onclick="setBitDepth(16)">16 бит</button>
-                        <button class="depth-btn" onclick="setBitDepth(24)">24 бит</button>
-                        <button class="depth-btn" onclick="setBitDepth(32)">32 бит</button>
+                    <div class="eq-controls">
+                        <div class="eq-band">
+                            <span>Низкие</span>
+                            <input type="range" id="eqLow" min="-12" max="12" value="0" step="1">
+                            <span class="eq-value" id="eqLowValue">0dB</span>
+                        </div>
+                        <div class="eq-band">
+                            <span>Средние</span>
+                            <input type="range" id="eqMid" min="-12" max="12" value="0" step="1">
+                            <span class="eq-value" id="eqMidValue">0dB</span>
+                        </div>
+                        <div class="eq-band">
+                            <span>Высокие</span>
+                            <input type="range" id="eqHigh" min="-12" max="12" value="0" step="1">
+                            <span class="eq-value" id="eqHighValue">0dB</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Реверберация -->
+                <div class="effect-card glass-effect">
+                    <div class="effect-header">
+                        <span class="effect-icon">🌊</span>
+                        <h3>Реверберация</h3>
+                    </div>
+                    <div class="effect-control">
+                        <input type="range" id="reverbSlider" min="0" max="100" value="0" step="1">
+                        <div class="value-display">
+                            <span id="reverbValue">0%</span>
+                            <div class="preset-buttons">
+                                <button class="preset-btn" onclick="setReverb(0)">Нет</button>
+                                <button class="preset-btn" onclick="setReverb(30)">Комната</button>
+                                <button class="preset-btn" onclick="setReverb(60)">Зал</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pitch (Тональность) -->
+                <div class="effect-card glass-effect">
+                    <div class="effect-header">
+                        <span class="effect-icon">🎼</span>
+                        <h3>Тональность</h3>
+                    </div>
+                    <div class="effect-control">
+                        <input type="range" id="pitchSlider" min="-12" max="12" value="0" step="1">
+                        <div class="value-display">
+                            <span id="pitchValue">0</span>
+                            <div class="preset-buttons">
+                                <button class="preset-btn" onclick="setPitch(-2)">-2</button>
+                                <button class="preset-btn" onclick="setPitch(0)">0</button>
+                                <button class="preset-btn" onclick="setPitch(2)">+2</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Инверсия фазы -->
+                <div class="effect-card glass-effect">
+                    <div class="effect-header">
+                        <span class="effect-icon">🔄</span>
+                        <h3>Инверсия фазы</h3>
+                    </div>
+                    <div class="toggle-switch">
+                        <span class="toggle-label">Инвертировать фазу</span>
+                        <div class="toggle" id="phaseToggle" onclick="togglePhase()"></div>
                     </div>
                 </div>
             </div>
 
             <!-- Вкладка "Экспорт" -->
             <div class="tab-content" id="export-tab">
-                <!-- Формат -->
+                <!-- Формат файла -->
                 <div class="effect-card glass-effect">
                     <div class="effect-header">
                         <span class="effect-icon">💾</span>
@@ -164,6 +242,7 @@
                         <button class="format-btn" onclick="setFormat('wav')">WAV</button>
                         <button class="format-btn" onclick="setFormat('ogg')">OGG</button>
                         <button class="format-btn" onclick="setFormat('m4a')">M4A</button>
+                        <button class="format-btn" onclick="setFormat('flac')">FLAC</button>
                     </div>
                 </div>
 
@@ -171,7 +250,7 @@
                 <div class="effect-card glass-effect" id="mp3Quality">
                     <div class="effect-header">
                         <span class="effect-icon">⚡</span>
-                        <h3>Качество MP3</h3>
+                        <h3>Качество</h3>
                     </div>
                     <div class="quality-selector">
                         <button class="quality-btn" onclick="setBitrate('64k')">64 kbps</button>
@@ -182,18 +261,75 @@
                     </div>
                 </div>
 
-                <!-- Кнопка экспорта -->
-                <button class="export-btn" onclick="exportAudio()">
-                    <span>🎵 Обработать и отправить</span>
+                <!-- Дополнительные настройки -->
+                <div class="effect-card glass-effect">
+                    <div class="effect-header">
+                        <span class="effect-icon">⚙️</span>
+                        <h3>Дополнительно</h3>
+                    </div>
+                    <div class="settings-section">
+                        <div class="toggle-switch">
+                            <span class="toggle-label">Нормализовать громкость</span>
+                            <div class="toggle" id="normalizeToggle"></div>
+                        </div>
+                        <div class="toggle-switch">
+                            <span class="toggle-label">Удалить тишину</span>
+                            <div class="toggle" id="silenceToggle"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Прогресс экспорта -->
+                <div class="export-progress" id="exportProgress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <span id="progressText">Обработка...</span>
+                </div>
+
+                <!-- Кнопки экспорта -->
+                <button class="export-btn" onclick="applyAndSave()">
+                    <span>💾 Обработать и сохранить</span>
+                </button>
+                
+                <button class="preview-btn" onclick="previewExport()">
+                    <span>👂 Предпросмотр результата</span>
                 </button>
             </div>
         </main>
 
         <!-- Нижняя панель -->
         <footer class="footer">
-            <button class="apply-btn" onclick="applyEffects()">Применить эффекты</button>
-            <button class="reset-btn" onclick="resetEffects()">Сбросить</button>
+            <button class="apply-btn" onclick="applyEffects()">
+                <span>✨ Применить эффекты</span>
+            </button>
+            <button class="reset-btn" onclick="resetEffects()">
+                <span>🔄 Сбросить</span>
+            </button>
         </footer>
+    </div>
+
+    <!-- Модальное окно загрузки -->
+    <div class="modal" id="loadingModal">
+        <div class="modal-content">
+            <div class="spinner"></div>
+            <h3 id="loadingText">Загрузка...</h3>
+        </div>
+    </div>
+
+    <!-- Модальное окно предпросмотра -->
+    <div class="modal" id="previewModal">
+        <div class="modal-content">
+            <h3>Предпросмотр</h3>
+            <div class="preview-controls">
+                <button class="control-btn play" onclick="playPreview()">▶</button>
+                <button class="control-btn pause" onclick="pausePreview()" style="display: none;">⏸</button>
+                <span id="previewTime">0:00 / 0:00</span>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn primary" onclick="closePreview()">Закрыть</button>
+            </div>
+        </div>
     </div>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
