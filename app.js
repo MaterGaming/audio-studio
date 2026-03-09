@@ -9,37 +9,41 @@ const state = {
     volume: 0,
     speed: 1,
     startTime: 0,
-    endTime: 0, // будет установлено из файла
+    endTime: 0,
     sampleRate: 'original',
     channels: 'original',
     bitDepth: 'original',
     format: 'mp3',
     bitrate: '128k',
     fileInfo: null,
-    fileId: null // ID файла в Telegram
+    fileId: null
 };
 
-// Загрузка данных из Telegram (если бот передал информацию о файле)
-try {
-    if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-        console.log('User:', tg.initDataUnsafe.user);
-        // Здесь бот может передать информацию о загруженном файле
-        const fileData = tg.initDataUnsafe.start_param ? 
-            JSON.parse(decodeURIComponent(tg.initDataUnsafe.start_param)) : null;
+// Получаем данные из URL (от бота)
+function getFileDataFromUrl() {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const startParam = urlParams.get('start_param');
         
-        if (fileData) {
-            state.fileInfo = fileData;
-            state.fileId = fileData.file_id;
-            updateFileInfo(fileData);
-        } else {
-            // Если нет данных, показываем заглушку
-            showNoFileMessage();
+        if (startParam) {
+            const fileData = JSON.parse(decodeURIComponent(startParam));
+            console.log('Получены данные файла:', fileData);
+            return fileData;
         }
-    } else {
-        showNoFileMessage();
+    } catch (e) {
+        console.error('Ошибка парсинга данных:', e);
     }
-} catch (e) {
-    console.log('No file data');
+    return null;
+}
+
+// Загрузка данных при запуске
+const fileData = getFileDataFromUrl();
+if (fileData) {
+    state.fileInfo = fileData;
+    state.fileId = fileData.file_id;
+    state.endTime = fileData.duration * 1000; // конвертируем в миллисекунды
+    updateFileInfo(fileData);
+} else {
     showNoFileMessage();
 }
 
@@ -49,63 +53,63 @@ function showNoFileMessage() {
     document.getElementById('fileDuration').textContent = '0:00';
     document.getElementById('fileSize').textContent = '0 KB';
     
-    // Добавляем кнопку для выбора файла
     const fileCard = document.querySelector('.file-info-card');
-    fileCard.innerHTML += `
-        <div style="text-align: center; margin-top: 10px;">
-            <button onclick="selectFile()" class="preset-btn" style="background: var(--accent);">
-                📁 Выбрать файл в боте
-            </button>
-        </div>
-    `;
+    const existingBtn = fileCard.querySelector('.file-select-btn');
+    if (!existingBtn) {
+        fileCard.innerHTML += `
+            <div style="text-align: center; margin-top: 10px;" class="file-select-btn">
+                <button onclick="sendToBot()" class="preset-btn" style="background: var(--accent); padding: 12px 20px;">
+                    📁 Отправить файл в бота
+                </button>
+                <p style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                    1. Напишите боту @your_bot_name<br>
+                    2. Отправьте аудиофайл<br>
+                    3. Нажмите кнопку "Открыть студию"
+                </p>
+            </div>
+        `;
+    }
 }
 
-// Функция для выбора файла
-window.selectFile = () => {
-    tg.showPopup({
-        title: 'Выберите файл',
-        message: 'Отправьте аудиофайл в бота, затем откройте это окно снова',
-        buttons: [{
-            id: 'ok',
-            type: 'default',
-            text: 'Понятно'
-        }]
-    });
-    
-    // Можно отправить команду боту
-    tg.sendData(JSON.stringify({
-        action: 'request_file'
-    }));
-    
-    // Закрываем мини-приложение, чтобы пользователь мог отправить файл
-    setTimeout(() => {
-        tg.close();
-    }, 3000);
+// Функция для отправки в бота
+window.sendToBot = () => {
+    tg.close(); // Закрываем мини-приложение
+    // Пользователь вернётся в чат с ботом
 };
 
 // Обновление информации о файле
 function updateFileInfo(fileData) {
     document.getElementById('fileName').textContent = fileData.name || 'audio_file.mp3';
     
-    const duration = fileData.duration || 210; // в секундах
+    const duration = fileData.duration || 0;
     const mins = Math.floor(duration / 60);
     const secs = Math.floor(duration % 60);
     document.getElementById('fileDuration').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
     
-    const size = fileData.size || 3.2; // в MB
+    const size = fileData.size || 0;
     document.getElementById('fileSize').textContent = `${size} MB`;
     
-    // Устанавливаем время окончания как длительность файла
-    state.endTime = duration * 1000; // конвертируем в миллисекунды
+    // Обновляем время окончания
     document.getElementById('endTime').value = `${mins}:${secs.toString().padStart(2, '0')}`;
-    
-    // Обновляем waveform
-    drawWaveform();
     
     // Убираем кнопку выбора файла, если она была
     const fileCard = document.querySelector('.file-info-card');
-    const oldBtn = fileCard.querySelector('div[style*="text-align: center"]');
+    const oldBtn = fileCard.querySelector('.file-select-btn');
     if (oldBtn) oldBtn.remove();
+    
+    // Добавляем информацию о каналах и частоте
+    const fileMeta = document.querySelector('.file-meta');
+    if (fileMeta) {
+        fileMeta.innerHTML = `
+            <span>${mins}:${secs.toString().padStart(2, '0')}</span>
+            <span>${fileData.size} MB</span>
+            <span>${fileData.channels === 2 ? '🎧 Стерео' : '🎤 Моно'}</span>
+            <span>${fileData.sample_rate} Гц</span>
+        `;
+    }
+    
+    // Рисуем waveform
+    drawWaveform();
 }
 
 // Управление вкладками
@@ -174,6 +178,7 @@ startTimeInput.addEventListener('change', (e) => {
         state.startTime = state.endTime - 1000;
         e.target.value = secondsToTime((state.endTime - 1000) / 1000);
     }
+    drawWaveform();
 });
 
 endTimeInput.addEventListener('change', (e) => {
@@ -183,6 +188,7 @@ endTimeInput.addEventListener('change', (e) => {
         state.endTime = state.startTime + 1000;
         e.target.value = secondsToTime((state.startTime + 1000) / 1000);
     }
+    drawWaveform();
 });
 
 // Формат
@@ -191,15 +197,19 @@ window.setFormat = (format) => {
     event.target.classList.add('active');
     state.format = format;
     
-    // Показываем/скрываем качество MP3
     const mp3Quality = document.getElementById('mp3Quality');
-    mp3Quality.style.display = format === 'mp3' ? 'block' : 'none';
+    if (mp3Quality) {
+        mp3Quality.style.display = format === 'mp3' ? 'block' : 'none';
+    }
 };
 
 // Частота дискретизации
-document.getElementById('sampleRate').addEventListener('change', (e) => {
-    state.sampleRate = e.target.value;
-});
+const sampleRateSelect = document.getElementById('sampleRate');
+if (sampleRateSelect) {
+    sampleRateSelect.addEventListener('change', (e) => {
+        state.sampleRate = e.target.value;
+    });
+}
 
 // Каналы
 window.setChannels = (mode) => {
@@ -226,7 +236,7 @@ window.setBitrate = (bitrate) => {
 window.applyEffects = () => {
     if (!state.fileId) {
         tg.showPopup({
-            title: 'Нет файла',
+            title: '❌ Нет файла',
             message: 'Сначала отправьте аудиофайл в бота',
             buttons: [{ type: 'close' }]
         });
@@ -235,7 +245,7 @@ window.applyEffects = () => {
     
     const applyBtn = document.querySelector('.apply-btn');
     applyBtn.classList.add('processing');
-    applyBtn.textContent = 'Обработка...';
+    applyBtn.textContent = '⏳ Обработка...';
     
     // Отправляем данные в бот
     tg.sendData(JSON.stringify({
@@ -254,14 +264,18 @@ window.applyEffects = () => {
     
     setTimeout(() => {
         applyBtn.classList.remove('processing');
-        applyBtn.textContent = 'Применить эффекты';
+        applyBtn.textContent = '✅ Эффекты применены';
+        
+        setTimeout(() => {
+            applyBtn.textContent = 'Применить эффекты';
+        }, 2000);
+        
         tg.showPopup({
-            title: '✅ Готово',
+            title: '✅ Готово!',
             message: 'Эффекты применены! Перейдите на вкладку "Экспорт" для сохранения.',
             buttons: [{ type: 'close' }]
         });
         
-        // Переключаем на вкладку экспорта
         document.querySelector('[data-tab="export"]').click();
     }, 1500);
 };
@@ -270,7 +284,7 @@ window.applyEffects = () => {
 window.exportAudio = () => {
     if (!state.fileId) {
         tg.showPopup({
-            title: 'Нет файла',
+            title: '❌ Нет файла',
             message: 'Сначала отправьте аудиофайл в бота',
             buttons: [{ type: 'close' }]
         });
@@ -281,7 +295,6 @@ window.exportAudio = () => {
     exportBtn.classList.add('processing');
     exportBtn.innerHTML = '<span>⏳ Обработка...</span>';
     
-    // Отправляем данные для экспорта
     tg.sendData(JSON.stringify({
         action: 'export_audio',
         file_id: state.fileId,
@@ -302,15 +315,19 @@ window.exportAudio = () => {
     
     setTimeout(() => {
         exportBtn.classList.remove('processing');
-        exportBtn.innerHTML = '<span>🎵 Обработать и отправить</span>';
+        exportBtn.innerHTML = '<span>✅ Отправлено!</span>';
+        
+        setTimeout(() => {
+            exportBtn.innerHTML = '<span>🎵 Обработать и отправить</span>';
+        }, 2000);
+        
         tg.showPopup({
             title: '✅ Успешно!',
             message: 'Аудио обработано и отправлено в чат!',
             buttons: [{ type: 'close' }]
         });
         
-        // Можно закрыть мини-приложение после успешной отправки
-        setTimeout(() => tg.close(), 2000);
+        setTimeout(() => tg.close(), 3000);
     }, 2000);
 };
 
@@ -320,36 +337,35 @@ window.resetEffects = () => {
     setSpeed(1);
     
     if (state.fileInfo) {
-        const duration = state.fileInfo.duration || 210;
+        const duration = state.fileInfo.duration || 0;
         state.startTime = 0;
         state.endTime = duration * 1000;
         startTimeInput.value = '0:00';
         endTimeInput.value = secondsToTime(duration);
-    } else {
-        state.startTime = 0;
-        state.endTime = 210000;
-        startTimeInput.value = '0:00';
-        endTimeInput.value = '3:30';
     }
     
-    // Сброс остальных настроек
     state.sampleRate = 'original';
-    document.getElementById('sampleRate').value = 'original';
+    if (sampleRateSelect) sampleRateSelect.value = 'original';
     
     setChannels('original');
     setBitDepth('original');
     setFormat('mp3');
     setBitrate('128k');
     
-    // Сброс активных классов
     document.querySelectorAll('.channel-btn, .depth-btn, .format-btn, .quality-btn')
         .forEach(btn => btn.classList.remove('active'));
     
-    // Устанавливаем активный класс для дефолтных значений
-    document.querySelector('[onclick="setChannels(\'original\')"]').classList.add('active');
-    document.querySelector('[onclick="setBitDepth(\'original\')"]').classList.add('active');
-    document.querySelector('[onclick="setFormat(\'mp3\')"]').classList.add('active');
-    document.querySelector('[onclick="setBitrate(\'128k\')"]').classList.add('active');
+    const originalChannels = document.querySelector('[onclick="setChannels(\'original\')"]');
+    const originalDepth = document.querySelector('[onclick="setBitDepth(\'original\')"]');
+    const mp3Format = document.querySelector('[onclick="setFormat(\'mp3\')"]');
+    const bitrate128 = document.querySelector('[onclick="setBitrate(\'128k\')"]');
+    
+    if (originalChannels) originalChannels.classList.add('active');
+    if (originalDepth) originalDepth.classList.add('active');
+    if (mp3Format) mp3Format.classList.add('active');
+    if (bitrate128) bitrate128.classList.add('active');
+    
+    drawWaveform();
     
     tg.showPopup({
         title: '🔄 Сброс',
@@ -366,7 +382,6 @@ function drawWaveform() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Рисуем более реалистичный waveform
     const barCount = 50;
     const barWidth = 4;
     const barSpacing = 2;
@@ -374,7 +389,6 @@ function drawWaveform() {
     const startX = (canvas.width - totalWidth) / 2;
     
     for (let i = 0; i < barCount; i++) {
-        // Генерируем более музыкальные паттерны
         let height;
         if (i < 10) height = 20 + Math.sin(i) * 15;
         else if (i < 20) height = 35 + Math.cos(i) * 20;
@@ -382,10 +396,8 @@ function drawWaveform() {
         else if (i < 40) height = 30 + Math.cos(i/3) * 20;
         else height = 15 + Math.sin(i/2) * 10;
         
-        // Добавляем случайные вариации
         height += Math.random() * 10;
         
-        // Градиент для баров
         const gradient = ctx.createLinearGradient(0, canvas.height - height, 0, canvas.height);
         gradient.addColorStop(0, '#8774e1');
         gradient.addColorStop(1, '#b8a9ff');
@@ -399,92 +411,96 @@ function drawWaveform() {
         );
     }
     
-    // Добавляем индикаторы обрезки
-    const totalDuration = state.endTime || 210000;
-    const startPercent = (state.startTime / totalDuration) * 100;
-    const endPercent = (state.endTime / totalDuration) * 100;
-    
-    // Удаляем старые хендлы если есть
-    const oldHandles = document.querySelectorAll('.cut-handle');
-    oldHandles.forEach(h => h.remove());
-    
-    // Создаем новые хендлы
-    const container = document.querySelector('.waveform-container');
-    const waveform = document.getElementById('waveform');
-    
-    const leftHandle = document.createElement('div');
-    leftHandle.className = 'cut-handle left-handle';
-    leftHandle.style.cssText = `
-        position: absolute;
-        left: ${startPercent}%;
-        top: 0;
-        width: 4px;
-        height: 100%;
-        background: linear-gradient(180deg, #ff6b6b, #ff4757);
-        cursor: ew-resize;
-        z-index: 10;
-        border-radius: 2px;
-        box-shadow: 0 0 10px rgba(255, 75, 75, 0.5);
-    `;
-    
-    const rightHandle = document.createElement('div');
-    rightHandle.className = 'cut-handle right-handle';
-    rightHandle.style.cssText = `
-        position: absolute;
-        right: ${100 - endPercent}%;
-        top: 0;
-        width: 4px;
-        height: 100%;
-        background: linear-gradient(180deg, #ff6b6b, #ff4757);
-        cursor: ew-resize;
-        z-index: 10;
-        border-radius: 2px;
-        box-shadow: 0 0 10px rgba(255, 75, 75, 0.5);
-    `;
-    
-    container.appendChild(leftHandle);
-    container.appendChild(rightHandle);
-    
-    // Добавляем затемнение для обрезаемых частей
-    const overlayLeft = document.createElement('div');
-    overlayLeft.style.cssText = `
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: ${startPercent}%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 5;
-    `;
-    
-    const overlayRight = document.createElement('div');
-    overlayRight.style.cssText = `
-        position: absolute;
-        right: 0;
-        top: 0;
-        width: ${100 - endPercent}%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 5;
-    `;
-    
-    // Удаляем старые оверлеи
-    const oldOverlays = container.querySelectorAll('.cut-overlay');
-    oldOverlays.forEach(o => o.remove());
-    
-    overlayLeft.className = 'cut-overlay';
-    overlayRight.className = 'cut-overlay';
-    
-    container.appendChild(overlayLeft);
-    container.appendChild(overlayRight);
+    // Добавляем маркеры обрезки
+    if (state.fileInfo && state.endTime > 0) {
+        const totalDuration = state.fileInfo.duration * 1000;
+        const startPercent = (state.startTime / totalDuration) * 100;
+        const endPercent = (state.endTime / totalDuration) * 100;
+        
+        const container = document.querySelector('.waveform-container');
+        if (!container) return;
+        
+        // Удаляем старые маркеры
+        const oldMarkers = container.querySelectorAll('.cut-marker');
+        oldMarkers.forEach(m => m.remove());
+        
+        // Левый маркер
+        const leftMarker = document.createElement('div');
+        leftMarker.className = 'cut-marker';
+        leftMarker.style.cssText = `
+            position: absolute;
+            left: ${startPercent}%;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, #ff6b6b, #ff4757);
+            z-index: 10;
+            border-radius: 2px;
+            box-shadow: 0 0 10px rgba(255, 75, 75, 0.5);
+            cursor: ew-resize;
+        `;
+        
+        // Правый маркер
+        const rightMarker = document.createElement('div');
+        rightMarker.className = 'cut-marker';
+        rightMarker.style.cssText = `
+            position: absolute;
+            right: ${100 - endPercent}%;
+            top: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, #ff6b6b, #ff4757);
+            z-index: 10;
+            border-radius: 2px;
+            box-shadow: 0 0 10px rgba(255, 75, 75, 0.5);
+            cursor: ew-resize;
+        `;
+        
+        container.appendChild(leftMarker);
+        container.appendChild(rightMarker);
+        
+        // Затемнение обрезаемых частей
+        const overlayLeft = document.createElement('div');
+        overlayLeft.className = 'cut-overlay';
+        overlayLeft.style.cssText = `
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: ${startPercent}%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 5;
+            pointer-events: none;
+        `;
+        
+        const overlayRight = document.createElement('div');
+        overlayRight.className = 'cut-overlay';
+        overlayRight.style.cssText = `
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: ${100 - endPercent}%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 5;
+            pointer-events: none;
+        `;
+        
+        container.appendChild(overlayLeft);
+        container.appendChild(overlayRight);
+    }
 }
 
-// Инициализация при загрузке
+// Инициализация
 document.addEventListener('DOMContentLoaded', () => {
     drawWaveform();
     
-    // Периодически обновляем waveform (для демонстрации)
-    setInterval(drawWaveform, 5000);
+    // Показываем приветствие если есть файл
+    if (state.fileInfo) {
+        tg.showPopup({
+            title: '🎵 Файл загружен!',
+            message: `Файл "${state.fileInfo.name}" готов к обработке`,
+            buttons: [{ type: 'close' }]
+        });
+    }
 });
-
-// Обновляем HTML чтобы добавить кнопку выбора файла
