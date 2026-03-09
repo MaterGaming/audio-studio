@@ -33,8 +33,7 @@ const state = {
     bitrate: '128k',
     fileInfo: null,
     fileId: null,
-    filePath: null,
-    botToken: '8532102228:AAFZji9fDEgiiSTcQJh485DKhXhEDYVhnz0'
+    botToken: '8532102228:AAFZji9fDEgiiSTcQJh485DKhXhEDYVhnz0' // Токен бота
 };
 
 // Получаем данные из URL (от бота)
@@ -47,10 +46,8 @@ function getFileDataFromUrl() {
             // Декодируем данные
             const decodedData = decodeURIComponent(startParam);
             const fileData = JSON.parse(decodedData);
-            console.log('✅ Получены данные файла от бота:', fileData);
+            console.log('✅ Получены данные файла:', fileData);
             return fileData;
-        } else {
-            console.log('❌ Нет данных в URL');
         }
     } catch (e) {
         console.error('❌ Ошибка парсинга данных:', e);
@@ -58,7 +55,7 @@ function getFileDataFromUrl() {
     return null;
 }
 
-// Функция для загрузки реального аудиофайла из Telegram
+// Функция для загрузки файла из Telegram
 async function loadRealAudioFile(fileData) {
     try {
         showLoading('🔄 Загрузка аудиофайла...');
@@ -67,13 +64,14 @@ async function loadRealAudioFile(fileData) {
         state.fileInfo = fileData;
         state.fileId = fileData.file_id;
         
-        // Формируем URL для скачивания файла из Telegram
+        // ПРАВИЛЬНЫЙ URL для скачивания файла из Telegram
         // Используем getFile?file_id= метод
         const fileUrl = `https://api.telegram.org/file/bot${state.botToken}/${fileData.file_path}`;
-        console.log('📥 Загружаем файл по URL:', fileUrl);
+        console.log('📥 URL для скачивания:', fileUrl);
         
         // Загружаем файл
         const response = await fetch(fileUrl);
+        
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
@@ -98,6 +96,7 @@ async function loadRealAudioFile(fileData) {
         
         hideLoading();
         
+        // Показываем успешное сообщение
         tg.showPopup({
             title: '✅ Успешно!',
             message: `Файл "${fileData.name}" загружен и готов к обработке`,
@@ -108,25 +107,59 @@ async function loadRealAudioFile(fileData) {
         console.error('❌ Ошибка загрузки:', error);
         hideLoading();
         
-        // Показываем ошибку
+        // Показываем сообщение об ошибке
         tg.showPopup({
             title: '❌ Ошибка загрузки',
-            message: 'Не удалось загрузить аудиофайл. Проверьте, что файл отправлен боту.',
+            message: 'Не удалось загрузить файл. Проверьте, что файл отправлен боту.',
             buttons: [{ type: 'close' }]
         });
         
-        // Показываем сообщение о необходимости отправить файл
-        showNoFileMessage();
+        // Создаем тестовое аудио для демонстрации
+        createTestAudio();
     }
+}
+
+// Создание тестового аудио (если не удалось загрузить реальное)
+async function createTestAudio() {
+    showLoading('Создание тестового аудио...');
+    
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    const sampleRate = audioContext.sampleRate;
+    const duration = 5;
+    const buffer = audioContext.createBuffer(2, sampleRate * duration, sampleRate);
+    
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        const nowBuffering = buffer.getChannelData(channel);
+        for (let i = 0; i < buffer.length; i++) {
+            const t = i / sampleRate;
+            // Простой тестовый сигнал
+            nowBuffering[i] = Math.sin(440 * 2 * Math.PI * t) * 0.1;
+        }
+    }
+    
+    audioBuffer = buffer;
+    state.endTime = duration * 1000;
+    
+    hideLoading();
+    initControls();
+    drawWaveform();
+    
+    document.getElementById('fileName').textContent = 'Тестовое аудио';
+    document.getElementById('fileDuration').textContent = '0:05';
+    document.getElementById('fileSize').textContent = '0.5 MB';
+    document.getElementById('fileChannels').textContent = 'Стерео';
+    document.getElementById('fileSampleRate').textContent = '44100 Гц';
 }
 
 // Загрузка данных при запуске
 const fileData = getFileDataFromUrl();
 if (fileData && fileData.file_id && fileData.file_path) {
-    console.log('📁 Загружаем реальный файл:', fileData);
+    console.log('📁 Загружаем реальный файл:', fileData.name);
     loadRealAudioFile(fileData);
 } else {
-    console.log('⚠️ Нет данных о файле, показываем сообщение');
+    console.log('⚠️ Нет данных о файле, создаем тестовое аудио');
+    createTestAudio();
     showNoFileMessage();
 }
 
@@ -614,56 +647,6 @@ window.applyAndSave = () => {
     });
 };
 
-// Предпросмотр
-window.previewExport = () => {
-    if (!audioBuffer) return;
-    
-    tg.showPopup({
-        title: '👂 Предпросмотр',
-        message: 'Функция предпросмотра будет доступна в следующем обновлении',
-        buttons: [{ type: 'close' }]
-    });
-};
-
-// Сброс
-window.resetEffects = () => {
-    setVolume(100);
-    setSpeed(1);
-    setReverb(0);
-    setPitch(0);
-    
-    state.eqLow = 0;
-    state.eqMid = 0;
-    state.eqHigh = 0;
-    state.isPhaseInverted = false;
-    state.isNormalized = false;
-    
-    document.getElementById('eqLow').value = 0;
-    document.getElementById('eqMid').value = 0;
-    document.getElementById('eqHigh').value = 0;
-    document.getElementById('eqLowValue').textContent = '0dB';
-    document.getElementById('eqMidValue').textContent = '0dB';
-    document.getElementById('eqHighValue').textContent = '0dB';
-    
-    document.getElementById('phaseToggle').classList.remove('active');
-    document.getElementById('normalizeToggle').classList.remove('active');
-    
-    if (audioBuffer) {
-        state.startTime = 0;
-        state.endTime = audioBuffer.duration * 1000;
-        document.getElementById('startTime').value = '0:00';
-        document.getElementById('endTime').value = secondsToTime(audioBuffer.duration);
-    }
-    
-    updateCutHandles();
-    
-    tg.showPopup({
-        title: '🔄 Сброс',
-        message: 'Все эффекты сброшены',
-        buttons: [{ type: 'close' }]
-    });
-};
-
 // Конвертация в WAV
 function encodeWAV(buffer) {
     const numChannels = buffer.numberOfChannels;
@@ -681,12 +664,9 @@ function encodeWAV(buffer) {
     let arrayBuffer = new ArrayBuffer(totalLength);
     let view = new DataView(arrayBuffer);
     
-    // RIFF header
     writeString(view, 0, 'RIFF');
     view.setUint32(4, totalLength - 8, true);
     writeString(view, 8, 'WAVE');
-    
-    // fmt subchunk
     writeString(view, 12, 'fmt ');
     view.setUint32(16, 16, true);
     view.setUint16(20, format, true);
@@ -695,12 +675,9 @@ function encodeWAV(buffer) {
     view.setUint32(28, sampleRate * blockAlign, true);
     view.setUint16(32, blockAlign, true);
     view.setUint16(34, bitDepth, true);
-    
-    // data subchunk
     writeString(view, 36, 'data');
     view.setUint32(40, dataLength, true);
     
-    // Write audio data
     let offset = 44;
     for (let i = 0; i < buffer.length; i++) {
         for (let channel = 0; channel < numChannels; channel++) {
@@ -750,12 +727,6 @@ function updateFileInfo(fileData) {
 }
 
 function showNoFileMessage() {
-    document.getElementById('fileName').textContent = 'Файл не выбран';
-    document.getElementById('fileDuration').textContent = '0:00';
-    document.getElementById('fileSize').textContent = '0 MB';
-    document.getElementById('fileChannels').textContent = '—';
-    document.getElementById('fileSampleRate').textContent = '— Гц';
-    
     const fileCard = document.querySelector('.file-info-card');
     const existingMsg = fileCard.querySelector('.no-file-message');
     
@@ -764,7 +735,7 @@ function showNoFileMessage() {
         msgDiv.className = 'no-file-message';
         msgDiv.innerHTML = `
             <div style="text-align: center; margin-top: 15px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 12px;">
-                <p style="margin-bottom: 10px;">📢 Отправьте аудиофайл боту,然后 нажмите кнопку "Открыть студию"</p>
+                <p style="margin-bottom: 10px;">📢 Отправьте аудиофайл боту, затем нажмите "Открыть студию"</p>
                 <button onclick="window.Telegram.WebApp.close()" class="preset-btn" style="background: var(--accent); padding: 10px 20px;">
                     🔙 Вернуться в чат
                 </button>
