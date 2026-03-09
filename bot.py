@@ -18,7 +18,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton(
             "🎵 Открыть Audio Studio", 
-            web_app=WebAppInfo(url="https://your-domain.com/mini-app")  # Замените на ваш URL
+            web_app=WebAppInfo(url="https://matergaming.github.io/audio-studio/")  # Замените на ваш URL
         )],
         [InlineKeyboardButton("📱 Помощь", callback_data="help")]
     ]
