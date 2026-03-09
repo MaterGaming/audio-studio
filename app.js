@@ -33,30 +33,62 @@ const state = {
     bitrate: '128k',
     fileInfo: null,
     fileId: null,
-    audioUrl: null
+    filePath: null,
+    botToken: '8532102228:AAFZji9fDEgiiSTcQJh485DKhXhEDYVhnz0'
 };
 
-// Функция для загрузки реального аудиофайла
+// Получаем данные из URL (от бота)
+function getFileDataFromUrl() {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const startParam = urlParams.get('start_param');
+        
+        if (startParam) {
+            // Декодируем данные
+            const decodedData = decodeURIComponent(startParam);
+            const fileData = JSON.parse(decodedData);
+            console.log('✅ Получены данные файла от бота:', fileData);
+            return fileData;
+        } else {
+            console.log('❌ Нет данных в URL');
+        }
+    } catch (e) {
+        console.error('❌ Ошибка парсинга данных:', e);
+    }
+    return null;
+}
+
+// Функция для загрузки реального аудиофайла из Telegram
 async function loadRealAudioFile(fileData) {
     try {
-        showLoading('Загрузка аудиофайла...');
+        showLoading('🔄 Загрузка аудиофайла...');
         
-        // Запрашиваем файл у бота через Telegram API
-        const fileUrl = `https://api.telegram.org/file/bot8532102228:AAFZji9fDEgiiSTcQJh485DKhXhEDYVhnz0/${fileData.file_path}`;
+        // Сохраняем данные
+        state.fileInfo = fileData;
+        state.fileId = fileData.file_id;
+        
+        // Формируем URL для скачивания файла из Telegram
+        // Используем getFile?file_id= метод
+        const fileUrl = `https://api.telegram.org/file/bot${state.botToken}/${fileData.file_path}`;
+        console.log('📥 Загружаем файл по URL:', fileUrl);
         
         // Загружаем файл
         const response = await fetch(fileUrl);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const arrayBuffer = await response.arrayBuffer();
+        console.log('📦 Файл загружен, размер:', arrayBuffer.byteLength, 'байт');
         
         // Создаем аудио контекст
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         
         // Декодируем аудио
         audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        console.log('🎵 Аудио декодировано:', audioBuffer);
         
         // Обновляем информацию
-        state.fileInfo = fileData;
-        state.fileId = fileData.file_id;
         state.endTime = audioBuffer.duration * 1000;
         
         // Обновляем UI
@@ -73,75 +105,29 @@ async function loadRealAudioFile(fileData) {
         });
         
     } catch (error) {
-        console.error('Ошибка загрузки:', error);
+        console.error('❌ Ошибка загрузки:', error);
         hideLoading();
         
-        // Если не удалось загрузить, создаем демо для теста
-        createDemoAudio();
-        
+        // Показываем ошибку
         tg.showPopup({
-            title: '⚠️ Внимание',
-            message: 'Не удалось загрузить файл. Используется тестовое аудио.',
+            title: '❌ Ошибка загрузки',
+            message: 'Не удалось загрузить аудиофайл. Проверьте, что файл отправлен боту.',
             buttons: [{ type: 'close' }]
         });
-    }
-}
-
-// Получаем данные из URL
-function getFileDataFromUrl() {
-    try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const startParam = urlParams.get('start_param');
         
-        if (startParam) {
-            const fileData = JSON.parse(decodeURIComponent(startParam));
-            console.log('Получены данные файла:', fileData);
-            return fileData;
-        }
-    } catch (e) {
-        console.error('Ошибка парсинга данных:', e);
+        // Показываем сообщение о необходимости отправить файл
+        showNoFileMessage();
     }
-    return null;
 }
 
-// Загрузка данных
+// Загрузка данных при запуске
 const fileData = getFileDataFromUrl();
-if (fileData && fileData.file_id) {
-    // Загружаем реальный файл
+if (fileData && fileData.file_id && fileData.file_path) {
+    console.log('📁 Загружаем реальный файл:', fileData);
     loadRealAudioFile(fileData);
 } else {
-    // Если нет данных, создаем демо
-    createDemoAudio();
+    console.log('⚠️ Нет данных о файле, показываем сообщение');
     showNoFileMessage();
-}
-
-// Создание демо-аудио (только для теста)
-async function createDemoAudio() {
-    showLoading('Создание тестового аудио...');
-    
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
-    const sampleRate = audioContext.sampleRate;
-    const duration = 5;
-    const buffer = audioContext.createBuffer(2, sampleRate * duration, sampleRate);
-    
-    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-        const nowBuffering = buffer.getChannelData(channel);
-        for (let i = 0; i < buffer.length; i++) {
-            const t = i / sampleRate;
-            // Простой тестовый тон
-            nowBuffering[i] = Math.sin(440 * 2 * Math.PI * t) * 0.1;
-        }
-    }
-    
-    audioBuffer = buffer;
-    state.endTime = duration * 1000;
-    
-    hideLoading();
-    initControls();
-    drawWaveform();
-    
-    document.getElementById('fileName').textContent = 'Тестовое аудио';
 }
 
 // Инициализация контролов
@@ -212,7 +198,7 @@ function setupEffectControls() {
             const value = parseInt(e.target.value);
             state.volume = value;
             volumeValue.textContent = `${value}%`;
-            volumePercent.style.width = `${value/2}%`; // Максимум 200% -> 100% ширина
+            volumePercent.style.width = `${value/2}%`;
             
             if (gainNode) {
                 gainNode.gain.value = (value / 100) * (isMuted ? 0 : 1);
@@ -236,7 +222,7 @@ function setupEffectControls() {
         });
     }
     
-    // Эквалайзер (упрощенная версия)
+    // Эквалайзер
     const eqLow = document.getElementById('eqLow');
     const eqMid = document.getElementById('eqMid');
     const eqHigh = document.getElementById('eqHigh');
@@ -245,7 +231,6 @@ function setupEffectControls() {
         eqLow.addEventListener('input', (e) => {
             state.eqLow = parseInt(e.target.value);
             document.getElementById('eqLowValue').textContent = `${state.eqLow}dB`;
-            applyEQ();
         });
     }
     
@@ -253,7 +238,6 @@ function setupEffectControls() {
         eqMid.addEventListener('input', (e) => {
             state.eqMid = parseInt(e.target.value);
             document.getElementById('eqMidValue').textContent = `${state.eqMid}dB`;
-            applyEQ();
         });
     }
     
@@ -261,7 +245,6 @@ function setupEffectControls() {
         eqHigh.addEventListener('input', (e) => {
             state.eqHigh = parseInt(e.target.value);
             document.getElementById('eqHighValue').textContent = `${state.eqHigh}dB`;
-            applyEQ();
         });
     }
     
@@ -280,7 +263,6 @@ function setupEffectControls() {
         pitchSlider.addEventListener('input', (e) => {
             state.pitch = parseInt(e.target.value);
             document.getElementById('pitchValue').textContent = state.pitch;
-            applyPitch();
         });
     }
     
@@ -348,21 +330,6 @@ function setupExportControls() {
     }
 }
 
-// Применить эквалайзер
-function applyEQ() {
-    // Здесь должна быть реальная обработка EQ
-    console.log('EQ applied:', state.eqLow, state.eqMid, state.eqHigh);
-}
-
-// Применить изменение тональности
-function applyPitch() {
-    if (sourceNode) {
-        // Простая реализация через скорость
-        const pitchFactor = Math.pow(2, state.pitch / 12);
-        sourceNode.playbackRate.value = state.speed * pitchFactor;
-    }
-}
-
 // Функции воспроизведения
 async function playAudio() {
     if (!audioBuffer || !audioContext) return;
@@ -382,9 +349,7 @@ async function playAudio() {
     gainNode = audioContext.createGain();
     gainNode.gain.value = isMuted ? 0 : state.volume / 100;
     
-    // Применяем pitch
-    const pitchFactor = Math.pow(2, state.pitch / 12);
-    sourceNode.playbackRate.value = state.speed * pitchFactor;
+    sourceNode.playbackRate.value = state.speed;
     
     sourceNode.connect(gainNode);
     gainNode.connect(audioContext.destination);
@@ -542,17 +507,19 @@ window.setCutPreset = (preset) => {
 window.togglePhase = () => {
     state.isPhaseInverted = !state.isPhaseInverted;
     document.getElementById('phaseToggle').classList.toggle('active', state.isPhaseInverted);
-    
-    if (sourceNode) {
-        // Простая инверсия фазы
-        if (gainNode) {
-            gainNode.gain.value *= -1;
-        }
-    }
 };
 
 // Применить эффекты
 window.applyEffects = () => {
+    if (!audioBuffer) {
+        tg.showPopup({
+            title: '❌ Нет аудио',
+            message: 'Сначала отправьте аудиофайл боту',
+            buttons: [{ type: 'close' }]
+        });
+        return;
+    }
+    
     showLoading('Применение эффектов...');
     
     setTimeout(() => {
@@ -591,9 +558,7 @@ window.applyAndSave = () => {
     const gain = offlineContext.createGain();
     gain.gain.value = state.volume / 100;
     
-    // Применяем pitch
-    const pitchFactor = Math.pow(2, state.pitch / 12);
-    source.playbackRate.value = state.speed * pitchFactor;
+    source.playbackRate.value = state.speed;
     
     source.connect(gain);
     gain.connect(offlineContext.destination);
@@ -607,19 +572,22 @@ window.applyAndSave = () => {
     
     // Рендерим
     offlineContext.startRendering().then(renderedBuffer => {
-        // Конвертируем в нужный формат
-        const audioData = encodeWAV(renderedBuffer);
+        // Конвертируем в WAV
+        const wavData = encodeWAV(renderedBuffer);
+        
+        // Конвертируем в base64
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(wavData)));
         
         // Отправляем в Telegram
         tg.sendData(JSON.stringify({
             action: 'save_audio',
-            audio_data: Array.from(new Uint8Array(audioData)),
+            audio_data: base64,
             format: state.format,
             bitrate: state.bitrate,
+            file_name: `processed_audio.${state.format}`,
             settings: {
                 volume: state.volume,
                 speed: state.speed,
-                pitch: state.pitch,
                 start: state.startTime,
                 end: state.endTime
             }
@@ -636,7 +604,7 @@ window.applyAndSave = () => {
         setTimeout(() => tg.close(), 2000);
         
     }).catch(error => {
-        console.error('Ошибка рендеринга:', error);
+        console.error('❌ Ошибка рендеринга:', error);
         hideLoading();
         tg.showPopup({
             title: '❌ Ошибка',
@@ -650,52 +618,10 @@ window.applyAndSave = () => {
 window.previewExport = () => {
     if (!audioBuffer) return;
     
-    // Сохраняем текущее состояние
-    const wasPlaying = isPlaying;
-    if (wasPlaying) pauseAudio();
-    
-    // Создаем предпросмотр
-    const previewContext = new OfflineAudioContext(
-        audioBuffer.numberOfChannels,
-        audioBuffer.length,
-        audioBuffer.sampleRate
-    );
-    
-    const source = previewContext.createBufferSource();
-    source.buffer = audioBuffer;
-    
-    const gain = previewContext.createGain();
-    gain.gain.value = state.volume / 100;
-    
-    const pitchFactor = Math.pow(2, state.pitch / 12);
-    source.playbackRate.value = state.speed * pitchFactor;
-    
-    source.connect(gain);
-    gain.connect(previewContext.destination);
-    
-    const startSample = Math.floor(state.startTime / 1000 * audioBuffer.sampleRate);
-    const endSample = Math.floor(state.endTime / 1000 * audioBuffer.sampleRate);
-    const duration = (endSample - startSample) / audioBuffer.sampleRate;
-    
-    source.start(0, startSample / audioBuffer.sampleRate, duration);
-    
-    previewContext.startRendering().then(renderedBuffer => {
-        // Воспроизводим предпросмотр
-        const previewSource = audioContext.createBufferSource();
-        previewSource.buffer = renderedBuffer;
-        previewSource.connect(audioContext.destination);
-        previewSource.start();
-        
-        tg.showPopup({
-            title: '👂 Предпросмотр',
-            message: 'Воспроизводится обработанное аудио',
-            buttons: [{ type: 'close' }]
-        });
-        
-        // Возвращаем исходное состояние
-        if (wasPlaying) {
-            setTimeout(() => playAudio(), 100);
-        }
+    tg.showPopup({
+        title: '👂 Предпросмотр',
+        message: 'Функция предпросмотра будет доступна в следующем обновлении',
+        buttons: [{ type: 'close' }]
     });
 };
 
@@ -829,6 +755,23 @@ function showNoFileMessage() {
     document.getElementById('fileSize').textContent = '0 MB';
     document.getElementById('fileChannels').textContent = '—';
     document.getElementById('fileSampleRate').textContent = '— Гц';
+    
+    const fileCard = document.querySelector('.file-info-card');
+    const existingMsg = fileCard.querySelector('.no-file-message');
+    
+    if (!existingMsg) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'no-file-message';
+        msgDiv.innerHTML = `
+            <div style="text-align: center; margin-top: 15px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 12px;">
+                <p style="margin-bottom: 10px;">📢 Отправьте аудиофайл боту,然后 нажмите кнопку "Открыть студию"</p>
+                <button onclick="window.Telegram.WebApp.close()" class="preset-btn" style="background: var(--accent); padding: 10px 20px;">
+                    🔙 Вернуться в чат
+                </button>
+            </div>
+        `;
+        fileCard.appendChild(msgDiv);
+    }
 }
 
 function showLoading(message) {
