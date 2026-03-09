@@ -33,7 +33,7 @@ const state = {
     bitrate: '128k',
     fileInfo: null,
     fileId: null,
-    botToken: '8532102228:AAFZji9fDEgiiSTcQJh485DKhXhEDYVhnz0' // Токен бота
+    botToken: '8532102228:AAFZji9fDEgiiSTcQJh485DKhXhEDYVhnz0'
 };
 
 // Получаем данные из URL (от бота)
@@ -43,7 +43,6 @@ function getFileDataFromUrl() {
         const startParam = urlParams.get('start_param');
         
         if (startParam) {
-            // Декодируем данные
             const decodedData = decodeURIComponent(startParam);
             const fileData = JSON.parse(decodedData);
             console.log('✅ Получены данные файла:', fileData);
@@ -60,12 +59,10 @@ async function loadRealAudioFile(fileData) {
     try {
         showLoading('🔄 Загрузка аудиофайла...');
         
-        // Сохраняем данные
         state.fileInfo = fileData;
         state.fileId = fileData.file_id;
         
-        // ПРАВИЛЬНЫЙ URL для скачивания файла из Telegram
-        // Используем getFile?file_id= метод
+        // ПРАВИЛЬНЫЙ URL для скачивания
         const fileUrl = `https://api.telegram.org/file/bot${state.botToken}/${fileData.file_path}`;
         console.log('📥 URL для скачивания:', fileUrl);
         
@@ -73,11 +70,11 @@ async function loadRealAudioFile(fileData) {
         const response = await fetch(fileUrl);
         
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            throw new Error(`HTTP ошибка! Статус: ${response.status}`);
         }
         
         const arrayBuffer = await response.arrayBuffer();
-        console.log('📦 Файл загружен, размер:', arrayBuffer.byteLength, 'байт');
+        console.log('📦 Размер файла:', arrayBuffer.byteLength, 'байт');
         
         // Создаем аудио контекст
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -96,10 +93,10 @@ async function loadRealAudioFile(fileData) {
         
         hideLoading();
         
-        // Показываем успешное сообщение
+        // Показываем успех
         tg.showPopup({
             title: '✅ Успешно!',
-            message: `Файл "${fileData.name}" загружен и готов к обработке`,
+            message: `Файл "${fileData.name}" загружен`,
             buttons: [{ type: 'close' }]
         });
         
@@ -107,19 +104,15 @@ async function loadRealAudioFile(fileData) {
         console.error('❌ Ошибка загрузки:', error);
         hideLoading();
         
-        // Показываем сообщение об ошибке
-        tg.showPopup({
-            title: '❌ Ошибка загрузки',
-            message: 'Не удалось загрузить файл. Проверьте, что файл отправлен боту.',
-            buttons: [{ type: 'close' }]
-        });
+        // Показываем детальную ошибку
+        showDetailedError(error, fileData);
         
-        // Создаем тестовое аудио для демонстрации
+        // Создаем тестовое аудио
         createTestAudio();
     }
 }
 
-// Создание тестового аудио (если не удалось загрузить реальное)
+// Создание тестового аудио
 async function createTestAudio() {
     showLoading('Создание тестового аудио...');
     
@@ -133,7 +126,6 @@ async function createTestAudio() {
         const nowBuffering = buffer.getChannelData(channel);
         for (let i = 0; i < buffer.length; i++) {
             const t = i / sampleRate;
-            // Простой тестовый сигнал
             nowBuffering[i] = Math.sin(440 * 2 * Math.PI * t) * 0.1;
         }
     }
@@ -152,15 +144,54 @@ async function createTestAudio() {
     document.getElementById('fileSampleRate').textContent = '44100 Гц';
 }
 
+// Показ детальной ошибки
+function showDetailedError(error, fileData) {
+    const fileCard = document.querySelector('.file-info-card');
+    
+    // Удаляем старые сообщения об ошибках
+    const oldErrors = document.querySelectorAll('.error-message');
+    oldErrors.forEach(el => el.remove());
+    
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-message';
+    errorDiv.style.cssText = `
+        text-align: center;
+        margin: 15px;
+        padding: 20px;
+        background: rgba(255,0,0,0.1);
+        border-radius: 12px;
+        border: 1px solid rgba(255,0,0,0.3);
+    `;
+    
+    errorDiv.innerHTML = `
+        <p style="color: #ff6b6b; margin-bottom: 10px; font-weight: bold;">❌ Ошибка загрузки</p>
+        <p style="font-size: 13px; color: #ccc; margin-bottom: 10px;">${error.message}</p>
+        <p style="font-size: 11px; color: #888; margin-bottom: 15px; word-break: break-all;">
+            Путь: ${fileData?.file_path || 'неизвестно'}
+        </p>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+            <button onclick="window.Telegram.WebApp.close()" 
+                style="padding: 10px 20px; background: var(--accent); border: none; border-radius: 20px; color: white; cursor: pointer;">
+                🔙 Вернуться в чат
+            </button>
+            <button onclick="location.reload()" 
+                style="padding: 10px 20px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 20px; color: white; cursor: pointer;">
+                🔄 Обновить
+            </button>
+        </div>
+    `;
+    
+    fileCard.appendChild(errorDiv);
+}
+
 // Загрузка данных при запуске
 const fileData = getFileDataFromUrl();
 if (fileData && fileData.file_id && fileData.file_path) {
     console.log('📁 Загружаем реальный файл:', fileData.name);
     loadRealAudioFile(fileData);
 } else {
-    console.log('⚠️ Нет данных о файле, создаем тестовое аудио');
+    console.log('⚠️ Нет данных о файле');
     createTestAudio();
-    showNoFileMessage();
 }
 
 // Инициализация контролов
@@ -180,17 +211,9 @@ function setupPlaybackControls() {
     const muteBtn = document.getElementById('muteBtn');
     const timeline = document.getElementById('timeline');
     
-    if (playBtn) {
-        playBtn.addEventListener('click', playAudio);
-    }
-    
-    if (pauseBtn) {
-        pauseBtn.addEventListener('click', pauseAudio);
-    }
-    
-    if (stopBtn) {
-        stopBtn.addEventListener('click', stopAudio);
-    }
+    if (playBtn) playBtn.addEventListener('click', playAudio);
+    if (pauseBtn) pauseBtn.addEventListener('click', pauseAudio);
+    if (stopBtn) stopBtn.addEventListener('click', stopAudio);
     
     if (loopToggle) {
         loopToggle.addEventListener('click', () => {
@@ -200,7 +223,12 @@ function setupPlaybackControls() {
     }
     
     if (muteBtn) {
-        muteBtn.addEventListener('click', toggleMute);
+        muteBtn.addEventListener('click', () => {
+            isMuted = !isMuted;
+            if (gainNode) gainNode.gain.value = isMuted ? 0 : state.volume / 100;
+            muteBtn.innerHTML = isMuted ? '<span>🔇</span>' : '<span>🔊</span>';
+            muteBtn.classList.toggle('active', isMuted);
+        });
     }
     
     if (timeline) {
@@ -223,142 +251,23 @@ function setupPlaybackControls() {
 function setupEffectControls() {
     // Громкость
     const volumeSlider = document.getElementById('volumeSlider');
-    const volumeValue = document.getElementById('volumeValue');
-    const volumePercent = document.getElementById('volumePercent');
-    
     if (volumeSlider) {
         volumeSlider.addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
             state.volume = value;
-            volumeValue.textContent = `${value}%`;
-            volumePercent.style.width = `${value/2}%`;
-            
-            if (gainNode) {
-                gainNode.gain.value = (value / 100) * (isMuted ? 0 : 1);
-            }
+            document.getElementById('volumeValue').textContent = `${value}%`;
+            document.getElementById('volumePercent').style.width = `${value/2}%`;
+            if (gainNode) gainNode.gain.value = (value / 100) * (isMuted ? 0 : 1);
         });
     }
     
     // Скорость
     const speedSlider = document.getElementById('speedSlider');
-    const speedValue = document.getElementById('speedValue');
-    
     if (speedSlider) {
         speedSlider.addEventListener('input', (e) => {
-            const value = parseFloat(e.target.value);
-            state.speed = value;
-            speedValue.textContent = `${value.toFixed(1)}x`;
-            
-            if (sourceNode) {
-                sourceNode.playbackRate.value = value;
-            }
-        });
-    }
-    
-    // Эквалайзер
-    const eqLow = document.getElementById('eqLow');
-    const eqMid = document.getElementById('eqMid');
-    const eqHigh = document.getElementById('eqHigh');
-    
-    if (eqLow) {
-        eqLow.addEventListener('input', (e) => {
-            state.eqLow = parseInt(e.target.value);
-            document.getElementById('eqLowValue').textContent = `${state.eqLow}dB`;
-        });
-    }
-    
-    if (eqMid) {
-        eqMid.addEventListener('input', (e) => {
-            state.eqMid = parseInt(e.target.value);
-            document.getElementById('eqMidValue').textContent = `${state.eqMid}dB`;
-        });
-    }
-    
-    if (eqHigh) {
-        eqHigh.addEventListener('input', (e) => {
-            state.eqHigh = parseInt(e.target.value);
-            document.getElementById('eqHighValue').textContent = `${state.eqHigh}dB`;
-        });
-    }
-    
-    // Реверберация
-    const reverbSlider = document.getElementById('reverbSlider');
-    if (reverbSlider) {
-        reverbSlider.addEventListener('input', (e) => {
-            state.reverb = parseInt(e.target.value);
-            document.getElementById('reverbValue').textContent = `${state.reverb}%`;
-        });
-    }
-    
-    // Pitch
-    const pitchSlider = document.getElementById('pitchSlider');
-    if (pitchSlider) {
-        pitchSlider.addEventListener('input', (e) => {
-            state.pitch = parseInt(e.target.value);
-            document.getElementById('pitchValue').textContent = state.pitch;
-        });
-    }
-    
-    // Обрезка
-    const startInput = document.getElementById('startTime');
-    const endInput = document.getElementById('endTime');
-    
-    if (startInput) {
-        startInput.addEventListener('change', () => {
-            const seconds = timeToSeconds(startInput.value);
-            state.startTime = Math.max(0, Math.min(seconds * 1000, state.endTime - 1000));
-            startInput.value = secondsToTime(state.startTime / 1000);
-            updateCutHandles();
-        });
-    }
-    
-    if (endInput) {
-        endInput.addEventListener('change', () => {
-            const seconds = timeToSeconds(endInput.value);
-            state.endTime = Math.min(state.endTime, Math.max(seconds * 1000, state.startTime + 1000));
-            endInput.value = secondsToTime(state.endTime / 1000);
-            updateCutHandles();
-        });
-    }
-    
-    // Фаза
-    const phaseToggle = document.getElementById('phaseToggle');
-    if (phaseToggle) {
-        phaseToggle.addEventListener('click', togglePhase);
-    }
-}
-
-// Настройка экспорта
-function setupExportControls() {
-    // Формат
-    document.querySelectorAll('.format-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.format-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            state.format = btn.textContent.toLowerCase();
-            
-            const mp3Quality = document.getElementById('mp3Quality');
-            if (mp3Quality) {
-                mp3Quality.style.display = state.format === 'mp3' ? 'block' : 'none';
-            }
-        });
-    });
-    
-    // Битрейт
-    document.querySelectorAll('.quality-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            state.bitrate = btn.textContent.split(' ')[0];
-        });
-    });
-    
-    // Нормализация
-    const normalizeToggle = document.getElementById('normalizeToggle');
-    if (normalizeToggle) {
-        normalizeToggle.addEventListener('click', () => {
-            state.isNormalized = !state.isNormalized;
-            normalizeToggle.classList.toggle('active', state.isNormalized);
+            state.speed = parseFloat(e.target.value);
+            document.getElementById('speedValue').textContent = `${state.speed.toFixed(1)}x`;
+            if (sourceNode) sourceNode.playbackRate.value = state.speed;
         });
     }
 }
@@ -367,9 +276,7 @@ function setupExportControls() {
 async function playAudio() {
     if (!audioBuffer || !audioContext) return;
     
-    if (audioContext.state === 'suspended') {
-        await audioContext.resume();
-    }
+    if (audioContext.state === 'suspended') await audioContext.resume();
     
     if (sourceNode) {
         sourceNode.stop();
@@ -383,16 +290,12 @@ async function playAudio() {
     gainNode.gain.value = isMuted ? 0 : state.volume / 100;
     
     sourceNode.playbackRate.value = state.speed;
-    
     sourceNode.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
     sourceNode.onended = () => {
-        if (state.isLooping) {
-            playAudio();
-        } else {
-            stopAudio();
-        }
+        if (state.isLooping) playAudio();
+        else stopAudio();
     };
     
     const offset = pauseTime / 1000 || 0;
@@ -432,18 +335,6 @@ function stopAudio() {
     document.getElementById('pauseBtn').style.display = 'none';
     
     updateTimeline();
-}
-
-function toggleMute() {
-    isMuted = !isMuted;
-    const muteBtn = document.getElementById('muteBtn');
-    
-    if (gainNode) {
-        gainNode.gain.value = isMuted ? 0 : state.volume / 100;
-    }
-    
-    muteBtn.innerHTML = isMuted ? '<span>🔇</span>' : '<span>🔊</span>';
-    muteBtn.classList.toggle('active', isMuted);
 }
 
 function startTimeUpdate() {
@@ -504,44 +395,6 @@ window.setSpeed = (value) => {
     document.getElementById('speedSlider').dispatchEvent(new Event('input'));
 };
 
-window.setReverb = (value) => {
-    document.getElementById('reverbSlider').value = value;
-    document.getElementById('reverbSlider').dispatchEvent(new Event('input'));
-};
-
-window.setPitch = (value) => {
-    document.getElementById('pitchSlider').value = value;
-    document.getElementById('pitchSlider').dispatchEvent(new Event('input'));
-};
-
-window.setCutPreset = (preset) => {
-    const duration = state.endTime / 1000;
-    
-    switch(preset) {
-        case 'start':
-            state.startTime = 0;
-            state.endTime = duration * 0.3 * 1000;
-            break;
-        case 'middle':
-            state.startTime = duration * 0.35 * 1000;
-            state.endTime = duration * 0.65 * 1000;
-            break;
-        case 'end':
-            state.startTime = duration * 0.7 * 1000;
-            state.endTime = duration * 1000;
-            break;
-    }
-    
-    document.getElementById('startTime').value = secondsToTime(state.startTime / 1000);
-    document.getElementById('endTime').value = secondsToTime(state.endTime / 1000);
-    updateCutHandles();
-};
-
-window.togglePhase = () => {
-    state.isPhaseInverted = !state.isPhaseInverted;
-    document.getElementById('phaseToggle').classList.toggle('active', state.isPhaseInverted);
-};
-
 // Применить эффекты
 window.applyEffects = () => {
     if (!audioBuffer) {
@@ -578,7 +431,6 @@ window.applyAndSave = () => {
     
     showLoading('Обработка аудио...');
     
-    // Создаем offline контекст для рендеринга
     const offlineContext = new OfflineAudioContext(
         audioBuffer.numberOfChannels,
         audioBuffer.length,
@@ -592,23 +444,12 @@ window.applyAndSave = () => {
     gain.gain.value = state.volume / 100;
     
     source.playbackRate.value = state.speed;
-    
     source.connect(gain);
     gain.connect(offlineContext.destination);
     
-    // Обрезка
-    const startSample = Math.floor(state.startTime / 1000 * audioBuffer.sampleRate);
-    const endSample = Math.floor(state.endTime / 1000 * audioBuffer.sampleRate);
-    const duration = (endSample - startSample) / audioBuffer.sampleRate;
-    
-    source.start(0, startSample / audioBuffer.sampleRate, duration);
-    
-    // Рендерим
     offlineContext.startRendering().then(renderedBuffer => {
         // Конвертируем в WAV
         const wavData = encodeWAV(renderedBuffer);
-        
-        // Конвертируем в base64
         const base64 = btoa(String.fromCharCode(...new Uint8Array(wavData)));
         
         // Отправляем в Telegram
@@ -617,33 +458,44 @@ window.applyAndSave = () => {
             audio_data: base64,
             format: state.format,
             bitrate: state.bitrate,
-            file_name: `processed_audio.${state.format}`,
-            settings: {
-                volume: state.volume,
-                speed: state.speed,
-                start: state.startTime,
-                end: state.endTime
-            }
+            file_name: `processed_audio.${state.format}`
         }));
         
         hideLoading();
         
         tg.showPopup({
             title: '✅ Успешно!',
-            message: 'Аудио обработано и отправлено в чат',
+            message: 'Аудио отправлено в чат',
             buttons: [{ type: 'close' }]
         });
         
         setTimeout(() => tg.close(), 2000);
         
     }).catch(error => {
-        console.error('❌ Ошибка рендеринга:', error);
+        console.error('❌ Ошибка:', error);
         hideLoading();
         tg.showPopup({
             title: '❌ Ошибка',
             message: 'Не удалось обработать аудио',
             buttons: [{ type: 'close' }]
         });
+    });
+};
+
+// Сброс
+window.resetEffects = () => {
+    setVolume(100);
+    setSpeed(1);
+    
+    if (audioBuffer) {
+        state.startTime = 0;
+        state.endTime = audioBuffer.duration * 1000;
+    }
+    
+    tg.showPopup({
+        title: '🔄 Сброс',
+        message: 'Все настройки сброшены',
+        buttons: [{ type: 'close' }]
     });
 };
 
@@ -656,16 +508,13 @@ function encodeWAV(buffer) {
     
     let bytesPerSample = bitDepth / 8;
     let blockAlign = numChannels * bytesPerSample;
-    
     let dataLength = buffer.length * blockAlign;
-    let headerLength = 44;
-    let totalLength = headerLength + dataLength;
-    
-    let arrayBuffer = new ArrayBuffer(totalLength);
+    let arrayBuffer = new ArrayBuffer(44 + dataLength);
     let view = new DataView(arrayBuffer);
     
+    // RIFF header
     writeString(view, 0, 'RIFF');
-    view.setUint32(4, totalLength - 8, true);
+    view.setUint32(4, 36 + dataLength, true);
     writeString(view, 8, 'WAVE');
     writeString(view, 12, 'fmt ');
     view.setUint32(16, 16, true);
@@ -678,6 +527,7 @@ function encodeWAV(buffer) {
     writeString(view, 36, 'data');
     view.setUint32(40, dataLength, true);
     
+    // Write audio data
     let offset = 44;
     for (let i = 0; i < buffer.length; i++) {
         for (let channel = 0; channel < numChannels; channel++) {
@@ -699,20 +549,6 @@ function writeString(view, offset, string) {
 }
 
 // Вспомогательные функции
-function timeToSeconds(timeStr) {
-    const parts = timeStr.split(':');
-    if (parts.length === 2) {
-        return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-    }
-    return parseInt(parts[0]);
-}
-
-function secondsToTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
 function updateFileInfo(fileData) {
     document.getElementById('fileName').textContent = fileData.name || 'audio.mp3';
     
@@ -724,25 +560,6 @@ function updateFileInfo(fileData) {
     document.getElementById('fileSampleRate').textContent = `${fileData.sample_rate} Гц`;
     
     document.getElementById('endTime').value = `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-function showNoFileMessage() {
-    const fileCard = document.querySelector('.file-info-card');
-    const existingMsg = fileCard.querySelector('.no-file-message');
-    
-    if (!existingMsg) {
-        const msgDiv = document.createElement('div');
-        msgDiv.className = 'no-file-message';
-        msgDiv.innerHTML = `
-            <div style="text-align: center; margin-top: 15px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 12px;">
-                <p style="margin-bottom: 10px;">📢 Отправьте аудиофайл боту, затем нажмите "Открыть студию"</p>
-                <button onclick="window.Telegram.WebApp.close()" class="preset-btn" style="background: var(--accent); padding: 10px 20px;">
-                    🔙 Вернуться в чат
-                </button>
-            </div>
-        `;
-        fileCard.appendChild(msgDiv);
-    }
 }
 
 function showLoading(message) {
@@ -783,114 +600,30 @@ function drawWaveform() {
             if (datum > max) max = datum;
         }
         
-        const y1 = (1 + min) * amp;
-        const y2 = (1 + max) * amp;
-        
-        ctx.moveTo(i, y1);
-        ctx.lineTo(i, y2);
+        ctx.moveTo(i, (1 + min) * amp);
+        ctx.lineTo(i, (1 + max) * amp);
     }
     
     ctx.stroke();
-    
-    updateCutHandles();
 }
 
 function drawPlayhead() {
     const canvas = document.getElementById('waveform');
-    if (!canvas || !audioBuffer) return;
+    if (!canvas || !audioBuffer || !isPlaying) return;
     
     const ctx = canvas.getContext('2d');
+    const percent = (state.currentTime / state.endTime) * 100;
+    const x = (percent / 100) * canvas.width;
     
-    if (isPlaying && state.endTime) {
-        const percent = (state.currentTime / state.endTime) * 100;
-        const x = (percent / 100) * canvas.width;
-        
-        ctx.beginPath();
-        ctx.strokeStyle = '#ff4757';
-        ctx.lineWidth = 3;
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-    }
+    ctx.beginPath();
+    ctx.strokeStyle = '#ff4757';
+    ctx.lineWidth = 3;
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, canvas.height);
+    ctx.stroke();
 }
 
-function updateCutHandles() {
-    if (!state.endTime) return;
-    
-    const startPercent = (state.startTime / state.endTime) * 100;
-    const endPercent = 100 - ((state.endTime - state.startTime) / state.endTime * 100);
-    
-    const leftHandle = document.getElementById('leftHandle');
-    const rightHandle = document.getElementById('rightHandle');
-    
-    if (leftHandle) {
-        leftHandle.style.left = `${startPercent}%`;
-    }
-    
-    if (rightHandle) {
-        rightHandle.style.right = `${endPercent}%`;
-    }
-    
-    const leftOverlay = document.querySelector('.left-overlay');
-    const rightOverlay = document.querySelector('.right-overlay');
-    
-    if (leftOverlay) {
-        leftOverlay.style.width = `${startPercent}%`;
-    }
-    
-    if (rightOverlay) {
-        rightOverlay.style.width = `${endPercent}%`;
-    }
-}
-
-// Инициализация при загрузке
+// Инициализация
 document.addEventListener('DOMContentLoaded', () => {
-    window.addEventListener('resize', () => {
-        drawWaveform();
-    });
-    
-    // Drag handles for cut
-    let activeHandle = null;
-    
-    const leftHandle = document.getElementById('leftHandle');
-    const rightHandle = document.getElementById('rightHandle');
-    const cutPreview = document.getElementById('cutPreview');
-    
-    if (leftHandle) {
-        leftHandle.addEventListener('mousedown', (e) => {
-            activeHandle = 'left';
-            e.preventDefault();
-        });
-    }
-    
-    if (rightHandle) {
-        rightHandle.addEventListener('mousedown', (e) => {
-            activeHandle = 'right';
-            e.preventDefault();
-        });
-    }
-    
-    document.addEventListener('mousemove', (e) => {
-        if (!activeHandle || !state.endTime || !cutPreview) return;
-        
-        const rect = cutPreview.getBoundingClientRect();
-        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        const percent = (x / rect.width) * 100;
-        
-        if (activeHandle === 'left') {
-            const newTime = (percent / 100) * state.endTime;
-            state.startTime = Math.max(0, Math.min(newTime, state.endTime - 1000));
-            document.getElementById('startTime').value = secondsToTime(state.startTime / 1000);
-        } else if (activeHandle === 'right') {
-            const newTime = (percent / 100) * state.endTime;
-            state.endTime = Math.min(state.endTime, Math.max(newTime, state.startTime + 1000));
-            document.getElementById('endTime').value = secondsToTime(state.endTime / 1000);
-        }
-        
-        updateCutHandles();
-    });
-    
-    document.addEventListener('mouseup', () => {
-        activeHandle = null;
-    });
+    window.addEventListener('resize', drawWaveform);
 });
